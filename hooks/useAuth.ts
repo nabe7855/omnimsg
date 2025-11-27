@@ -22,50 +22,52 @@ export const useAuth = () => {
     }
 
     // 1. まず手元にある情報（メタデータ）だけで一旦ユーザー情報をセットする
-    let role = session.user.user_metadata.role;
-    let name = session.user.user_metadata.name;
+    //    これで画面を即座に表示できます
     const userId = session.user.id;
+    const meta = session.user.user_metadata;
 
-    // ★重要：DBの結果を待たずに、まずは画面を表示させてしまう！
     setCurrentUser({
       id: userId,
       email: session.user.email!,
-      name: name || "",
-      role: role as UserRole, // まだ undefined かもしれないが一旦許容
-      avatar_url: session.user.user_metadata.avatar_url || "",
-      display_id: session.user.user_metadata.display_id || "",
-      bio: session.user.user_metadata.bio || "",
+      name: meta.name || "",
+      role: meta.role as UserRole,
+      avatar_url: meta.avatar_url || "",
+      display_id: meta.display_id || "", // メタデータになければ一旦空文字
+      bio: meta.bio || "",
     });
     setLoaded(true); // ★ここで画面ロック解除！
 
-    // 2. もし role が欠けていたら、裏側でこっそりDBに取りに行く
-    if (!role) {
-      console.log("Role missing. Fetching from DB in background...");
+    // 2. 裏側でDBから最新のプロフィール情報（IDや自己紹介）を取得して上書きする
+    //    (roleがあってもなくても、常に最新情報を同期するのが安全です)
+    console.log("Fetching latest profile from DB...");
 
-      // 非同期でDB問い合わせ
-      supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle()
-        .then(({ data: profile, error }) => {
-          if (error) {
-            console.error("DB Error:", error);
-          }
-          if (profile) {
-            console.log("Role fetched from DB:", profile.role);
-            // 情報が取れたら、後追いでユーザー情報を更新する
-            setCurrentUser((prev) => {
-              if (!prev) return null;
-              return {
-                ...prev,
-                role: profile.role as UserRole,
-                name: profile.name || prev.name,
-              };
-            });
-          }
-        });
-    }
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", userId)
+      .maybeSingle()
+      .then(({ data: profile, error }) => {
+        if (error) {
+          console.error("DB Error:", error);
+        }
+        if (profile) {
+          console.log("Profile sync success:", profile);
+
+          // 取得したデータで情報を更新
+          setCurrentUser((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              // DBにデータがあればそれを使い、なければ今のまま
+              role: (profile.role as UserRole) || prev.role,
+              name: profile.name || prev.name,
+              display_id: profile.display_id || prev.display_id, // ★ここでIDが入る！
+              bio: profile.bio || prev.bio,
+              avatar_url: profile.avatar_url || prev.avatar_url,
+            };
+          });
+        }
+      });
   };
 
   // ============================================
@@ -94,7 +96,6 @@ export const useAuth = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
-      console.log("Auth State Changed:", event);
 
       if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
         await fetchAndSetUser(session);
@@ -143,7 +144,6 @@ export const useAuth = () => {
         return;
       }
 
-      // 画面遷移
       const startPath =
         role === UserRole.STORE
           ? "/store/casts"

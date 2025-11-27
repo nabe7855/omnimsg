@@ -8,23 +8,23 @@ export default function Page() {
   const navigate = useNav();
   const { currentUser, logout, loaded } = useAuth();
 
-  // ★ 初期ロード中は描画しない
+  // 初期ロード中
   if (!loaded) return null;
 
-  // ★ 未ログインはログインページへ
+  // 未ログインはログインへ
   if (!currentUser) {
     navigate("/login");
     return null;
   }
 
-  // ★ useAuth の logout を使う（mockSupabase と連動）
+  // ログアウト
   const handleLogout = async () => {
     await logout();
   };
 
   return (
     <ProfileScreen
-      currentUser={currentUser} // ← Profile 型が保証される
+      currentUser={currentUser}
       onLogout={handleLogout}
       navigate={navigate}
     />
