@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { db } from "@/lib/mockSupabase";
+import { supabase } from "@/lib/supabaseClient";
 import { Profile, UserRole } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
+import { createClient } from "@supabase/supabase-js";
+import React, { useCallback, useEffect, useState } from "react";
 
 export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   currentUser,
@@ -11,9 +12,11 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
 }) => {
   const [myCasts, setMyCasts] = useState<Profile[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPass, setNewPass] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // -----------------------------
   // 🔒 安全な navigate
@@ -26,21 +29,34 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   );
 
   // -----------------------------
-  // キャスト読み込み
+  // 1. キャスト読み込み
   // -----------------------------
-  useEffect(() => {
+  const fetchCasts = useCallback(async () => {
     if (!currentUser || currentUser.role !== UserRole.STORE) return;
 
-    const load = async () => {
-      const result = await db.getMyCasts(currentUser.id);
-      setMyCasts(result);
-    };
+    // 自分の store_id を持つキャストを取得
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("store_id", currentUser.id)
+      .eq("role", UserRole.CAST);
 
-    load();
+    if (error) {
+      console.error("Error fetching casts:", error);
+      return;
+    }
+
+    if (data) {
+      setMyCasts(data as Profile[]);
+    }
   }, [currentUser]);
 
+  useEffect(() => {
+    fetchCasts();
+  }, [fetchCasts]);
+
   // -----------------------------
-  // キャスト作成
+  // 2. キャスト作成 (修正版)
   // -----------------------------
   const handleCreate = async () => {
     if (!newName || !newEmail || !newPass) {
@@ -49,32 +65,96 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
     }
     if (!currentUser) return;
 
+    setIsProcessing(true);
+
     try {
-      const newCast = await db.createCast(
-        currentUser.id,
-        newName,
-        newEmail,
-        newPass
+      // ★重要修正: セッションを保存しない設定で一時クライアントを作成
+      // これにより、メインの店舗ログイン状態が維持されます
+      const tempSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          auth: {
+            persistSession: false, // ローカルストレージを使わない
+            autoRefreshToken: false, // トークン更新もしない
+            detectSessionInUrl: false, // URLからも読み取らない
+          },
+        }
       );
-      setMyCasts((prev) => [...prev, newCast]);
+
+      // ① 一時クライアントで新規登録
+      const { data: authData, error: authError } =
+        await tempSupabase.auth.signUp({
+          email: newEmail,
+          password: newPass,
+          options: {
+            data: {
+              name: newName,
+              role: UserRole.CAST,
+            },
+          },
+        });
+
+      if (authError) throw authError;
+      const newUser = authData.user;
+      if (!newUser) throw new Error("ユーザー作成に失敗しました");
+
+      // ② プロフィールを作成
+      const displayId = newUser.id.slice(0, 8);
+
+      const { error: profileError } = await tempSupabase
+        .from("profiles")
+        .insert([
+          {
+            id: newUser.id,
+            email: newEmail,
+            role: UserRole.CAST,
+            name: newName,
+            display_id: displayId,
+            store_id: currentUser.id,
+            avatar_url: "",
+            bio: "",
+          },
+        ]);
+
+      if (profileError) throw profileError;
+
+      // ③ 作成完了後、リストを再読み込みして画面に反映
+      await fetchCasts();
+
       closeModal();
-      alert("キャストアカウントを作成しました。");
+      alert(`キャスト「${newName}」を作成しました！`);
     } catch (e: any) {
-      alert(e.message);
+      console.error(e);
+      alert(e.message || "作成に失敗しました");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   // -----------------------------
-  // キャスト削除
+  // 3. キャスト削除
   // -----------------------------
   const handleDelete = async (castId: string) => {
     if (
-      window.confirm(
-        "このアカウントを削除してもよろしいですか？\nこの操作は取り消せません。"
+      !window.confirm(
+        "このキャストをリストから削除しますか？\n（注: データベースのProfileのみ削除されます）"
       )
     ) {
-      await db.deleteProfile(castId);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", castId);
+
+      if (error) throw error;
+
       setMyCasts((prev) => prev.filter((c) => c.id !== castId));
+    } catch (e: any) {
+      alert("削除に失敗しました: " + e.message);
     }
   };
 
@@ -85,15 +165,8 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
     setNewPass("");
   };
 
-  // -----------------------------
-  // currentUser が null の間は表示を待つ
-  // -----------------------------
   if (!currentUser) {
-    return (
-      <div className="cast-mgmt-loading-message">
-        読み込み中...
-      </div>
-    );
+    return <div className="cast-mgmt-loading-message">読み込み中...</div>;
   }
 
   return (
@@ -114,13 +187,17 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
           <div
             key={c.id}
             className="cast-mgmt-card"
-            onClick={() => safeNavigate(`/users/${c.id}`)}
+            onClick={() => safeNavigate(`/profile`)}
           >
             <div className="cast-mgmt-card-main">
               <img
-                src={c.avatar_url}
+                src={c.avatar_url || "/placeholder-avatar.png"}
                 className="cast-mgmt-avatar"
                 alt={c.name}
+                onError={(e) =>
+                  ((e.target as HTMLImageElement).src =
+                    "/placeholder-avatar.png")
+                }
               />
               <div>
                 <div className="cast-mgmt-name">{c.name}</div>
@@ -129,9 +206,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
             </div>
 
             <div className="cast-mgmt-card-right">
-              <div className="cast-mgmt-status-label">
-                有効
-              </div>
+              <div className="cast-mgmt-status-label">有効</div>
 
               <button
                 type="button"
@@ -141,29 +216,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                 }}
                 className="cast-mgmt-delete-button"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="cast-mgmt-delete-icon"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    fill="none"
-                    d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21
-                    c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673
-                    a2.25 2.25 0 0 1-2.244 2.077H8.084
-                    a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79
-                    m14.456 0a48.108 48.108 0 0 0-3.478-.397
-                    m-12 .562c.34-.059.68-.114 1.022-.165m0 0
-                    a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916
-                    c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0
-                    c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0
-                    a48.667 48.667 0 0 0-7.5 0"
-                  />
-                </svg>
+                🗑️
               </button>
             </div>
           </div>
@@ -180,9 +233,10 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
       {isModalOpen && (
         <div className="cast-mgmt-modal-backdrop">
           <div className="cast-mgmt-modal">
-            <h3 className="cast-mgmt-modal-title">
-              キャスト新規登録
-            </h3>
+            <h3 className="cast-mgmt-modal-title">キャスト新規登録</h3>
+            <p className="cast-mgmt-modal-desc">
+              キャスト用のログインIDとパスワードを発行します。
+            </p>
 
             <div className="cast-mgmt-modal-fields">
               <div className="input-group">
@@ -214,7 +268,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                   type="password"
                   value={newPass}
                   onChange={(e) => setNewPass(e.target.value)}
-                  placeholder="********"
+                  placeholder="8文字以上"
                 />
               </div>
             </div>
@@ -223,6 +277,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
               <button
                 type="button"
                 onClick={closeModal}
+                disabled={isProcessing}
                 className="btn-secondary cast-mgmt-modal-button"
               >
                 キャンセル
@@ -230,9 +285,10 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
               <button
                 type="button"
                 onClick={handleCreate}
+                disabled={isProcessing}
                 className="btn-primary cast-mgmt-modal-button"
               >
-                作成
+                {isProcessing ? "作成中..." : "作成"}
               </button>
             </div>
           </div>
