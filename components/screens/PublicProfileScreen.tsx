@@ -50,20 +50,9 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
     load();
   }, [targetUserId]);
 
-  // ============ 安全なナビゲーション ============
-  const handleBack = () => {
-    // 履歴があれば戻る、なければホームへ
-    if (window.history.length > 1) {
-      window.history.back();
-    } else {
-      navigate("/home");
-    }
-  };
-
   // ============ チャットルーム取得・作成ロジック (共通) ============
   const getOrCreateRoom = async (partnerId: string) => {
-    // ★ 修正箇所: ここで currentUser が null の場合は処理を中断する
-    // これにより、以降の行で currentUser.id を安全に使えるようになります
+    // ★ currentUser が null の場合は処理を中断
     if (!currentUser) return null;
 
     try {
@@ -97,24 +86,36 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
       }
 
       // B. なければ新規作成
+      // 明示的に type: 'dm' を指定
       const { data: newRoom, error: roomError } = await supabase
         .from("rooms")
-        .insert({}) // 空のルームを作成
+        .insert({ type: "dm" })
         .select()
         .single();
 
-      if (roomError || !newRoom) throw new Error("ルーム作成失敗");
+      if (roomError) {
+        console.error("Room create error:", roomError);
+        throw roomError;
+      }
+      if (!newRoom) throw new Error("ルーム作成失敗");
 
       // 参加者を追加 (自分と相手)
-      await supabase.from("room_participants").insert([
-        { room_id: newRoom.id, user_id: currentUser.id },
-        { room_id: newRoom.id, user_id: partnerId },
-      ]);
+      const { error: participantError } = await supabase
+        .from("room_participants")
+        .insert([
+          { room_id: newRoom.id, user_id: currentUser.id },
+          { room_id: newRoom.id, user_id: partnerId },
+        ]);
+
+      if (participantError) {
+        console.error("Participant create error:", participantError);
+        throw participantError;
+      }
 
       return newRoom.id;
-    } catch (e) {
+    } catch (e: any) {
       console.error("Chat start error:", e);
-      alert("チャットの開始に失敗しました");
+      alert(`チャットの開始に失敗しました: ${e.message}`);
       return null;
     }
   };
@@ -154,7 +155,7 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
 
   return (
     <div className="public-profile-screen">
-      {/* Header */}
+      {/* Header (Layoutで戻るボタンがあるため削除) */}
 
       {/* Main Content */}
       <div className="public-profile-main">
@@ -227,13 +228,8 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
             storeProfile && (
               <button
                 onClick={handleContactStore}
-                className="btn-primary public-profile-action-button public-profile-action-button-primary"
+                className="public-profile-action-button public-profile-action-button-primary"
                 type="button"
-                style={{
-                  marginBottom: "12px",
-                  backgroundColor: "#4b5563",
-                  borderColor: "#4b5563",
-                }}
               >
                 店舗に問い合わせる
               </button>
@@ -241,7 +237,7 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
 
           <button
             onClick={handleSendMessage}
-            className="btn-secondary public-profile-action-button public-profile-action-button-secondary"
+            className="public-profile-action-button public-profile-action-button-secondary"
             type="button"
           >
             💬 メッセージを送る

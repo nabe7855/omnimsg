@@ -565,11 +565,15 @@ body {
 }
 
 /* ==========================
-      Home Screen
+   Home Screen
 ========================== */
-
 .home-screen {
+  display: flex; /* 縦方向に要素を並べる */
+  flex-direction: column;
+  height: 100%; /* 画面いっぱいの高さを確保 */
   padding: 16px;
+  background-color: #ffffff;
+  box-sizing: border-box;
 }
 
 .home-title {
@@ -577,75 +581,107 @@ body {
   font-weight: 700;
   margin-bottom: 16px;
   color: #1f2937;
+  text-align: center; /* タイトルを中央に */
+  flex-shrink: 0; /* スクロールしても縮まないように */
 }
 
 /* 検索ボックス */
 .home-search-box {
   margin-bottom: 16px;
+  flex-shrink: 0; /* スクロール時に潰れないように */
 }
 
 .home-search-input {
   width: 100%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid #d1d5db;
+  padding: 12px 16px; /* 少し高さを出す */
+  border-radius: 99px; /* 丸みのあるデザインに */
+  border: 1px solid #e5e7eb;
   font-size: 14px;
   outline: none;
   background: #f9fafb;
+  transition: all 0.2s;
+  box-sizing: border-box; /* はみ出し防止 */
 }
 
 .home-search-input:focus {
-  border-color: #6366f1;
+  border-color: #4b5563;
+  background-color: #ffffff;
 }
 
-/* ユーザー一覧 */
+/* ユーザー一覧エリア */
 .home-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+
+  /* ★重要: リスト部分だけスクロールさせる設定 */
+  flex: 1;
+  overflow-y: auto;
+
+  /* ★重要: フッターナビゲーション(約60~80px)の裏に隠れないように余白を開ける */
+  padding-bottom: 80px;
 }
 
-/* user-card の完全置き換え版 */
+/* ユーザーカード */
 .home-user-card {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border-radius: 14px;
+  border-radius: 16px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: background-color 0.15s ease;
+  flex-shrink: 0; /* リスト内で潰れないように */
 }
 
-.home-user-card:hover {
-  background: #f3f4f6;
+.home-user-card:active {
+  background: #f3f4f6; /* タップした瞬間の色 */
 }
 
 /* 画像 */
 .home-avatar {
   width: 48px;
   height: 48px;
-  border-radius: 9999px;
+  border-radius: 50%;
   object-fit: cover;
   background: #e5e7eb;
+  border: 1px solid #f3f4f6;
+  flex-shrink: 0;
 }
 
-/* テキスト */
+/* テキスト情報 */
 .home-user-info {
   display: flex;
   flex-direction: column;
+  flex: 1; /* 横幅いっぱいに広げる */
+  min-width: 0; /* ★重要: これがないと文字数が多い時にレイアウトが崩れる */
 }
 
 .home-user-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #111827;
+  margin-bottom: 2px;
+
+  /* 長い名前は「...」で省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  display: flex;
+  align-items: center;
 }
 
 .home-user-caption {
   font-size: 12px;
   color: #6b7280;
+
+  /* 長い自己紹介は「...」で省略 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ==========================
@@ -1505,32 +1541,148 @@ body {
 /* ==========================
    Room List Screen
 ========================== */
+
+/* 画面ベース */
 .room-list-screen {
-  padding: 16px;
-  position: relative;
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  box-sizing: border-box;
+  background-color: #ffffff;
+  position: relative;
 }
 
-.room-list-loading-message {
-  padding: 40px;
-  text-align: center;
-  font-size: 14px;
+/* ロード中 */
+.room-list-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
   color: #9ca3af;
+  font-size: 14px;
 }
 
-/* Header */
+/* ヘッダー (Layoutで表示している場合は不要だがスタイルは維持) */
 .room-list-header {
+  padding: 16px;
+  border-bottom: 1px solid #f3f4f6;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
 }
 
 .room-list-title {
   margin: 0;
+  font-size: 18px;
+  font-weight: bold;
 }
 
+/* リスト表示エリア */
+.room-list-content {
+  flex: 1;
+  overflow-y: auto;
+  /* ★重要: フッターナビゲーション(約60~80px)の裏に隠れないように余白を開ける */
+  padding-bottom: 80px;
+}
+
+/* ==========================
+   List Item (ここをReactに合わせて修正)
+========================== */
+.room-list-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px; /* 適度な余白 */
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  gap: 12px;
+}
+
+.room-list-item:active {
+  background-color: #f9fafb;
+}
+
+/* アバター画像 */
+.room-list-avatar-wrapper {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  flex-shrink: 0; /* 縮まないようにする */
+}
+
+.room-list-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* テキスト情報エリア */
+.room-list-info {
+  flex: 1;
+  min-width: 0; /* フレックス内でテキスト省略(...)を効かせるために必須 */
+}
+
+/* 上段（名前と日付） */
+.room-list-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline; /* 文字のベースラインを揃える */
+  margin-bottom: 4px;
+}
+
+.room-list-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 8px;
+}
+
+.room-list-date {
+  font-size: 11px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* 下段（メッセージプレビュー） */
+.room-list-message {
+  font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+
+/* ==========================
+   Empty State
+========================== */
+.room-list-empty {
+  margin-top: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+  gap: 8px;
+}
+
+.room-list-empty-sub {
+  font-size: 12px;
+  color: #d1d5db;
+}
+
+/* ==========================
+   Legacy / Future styles (Modal etc.)
+   ※ 提供されたCSSにあったスタイルを保持
+========================== */
+
+/* Header Actions */
 .room-list-header-actions {
   display: flex;
   align-items: center;
@@ -1543,128 +1695,19 @@ body {
   border: 1px solid #e5e7eb;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
   padding: 6px;
-}
-
-.room-list-search-icon {
-  width: 20px;
-  height: 20px;
-  color: #4b5563;
-}
-
-.room-list-group-button {
-  font-size: 11px;
-  font-weight: 700;
-  border-radius: 9999px;
-  border: 1px solid #fecdd3;
-  background-color: #fff1f2;
-  color: #db2777;
-  padding: 4px 12px;
   cursor: pointer;
 }
 
-.room-list-broadcast-button {
-  font-size: 11px;
-  font-weight: 700;
-  border-radius: 9999px;
-  border: 1px solid #c7d2fe;
-  background-color: #e0e7ff;
-  color: #4f46e5;
-  padding: 4px 12px;
-  cursor: pointer;
-}
-
-/* List */
-.room-list-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Room row */
-.room-list-room-card {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  cursor: pointer;
-}
-
-.room-list-room-avatar {
-  flex-shrink: 0;
-}
-
-.room-list-room-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.room-list-room-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2px;
-}
-
-.room-list-room-name {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 70%;
-}
-
-.room-list-group-label {
-  font-size: 9px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  background-color: #e5e7eb;
-  color: #4b5563;
-}
-
-.room-list-room-name-text {
-  font-weight: 700;
-  color: #111827;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.room-list-room-time {
-  font-size: 10px;
-  color: #9ca3af;
-}
-
-.room-list-room-subtext {
-  font-size: 13px;
-  color: #6b7280;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Empty state */
-.room-list-empty {
-  margin-top: 40px;
-  text-align: center;
-  font-size: 14px;
-  color: #9ca3af;
-}
-
-.room-list-empty-link {
-  margin-top: 8px;
-  color: #4f46e5;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-/* Modal */
+/* Modal Backdrop */
 .room-list-modal-backdrop {
-  position: absolute;
+  position: fixed; /* absoluteからfixedに変更（スクロールしても追従） */
   inset: 0;
   background-color: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 16px;
-  z-index: 50;
+  z-index: 1000;
 }
 
 .room-list-modal {
@@ -1680,7 +1723,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
 
 .room-list-modal-title {
@@ -1693,70 +1736,17 @@ body {
 .room-list-modal-close {
   border: none;
   background: none;
-  font-size: 16px;
+  font-size: 20px;
   color: #9ca3af;
   cursor: pointer;
 }
 
-.room-list-modal-search-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
 .room-list-modal-input {
-  padding-top: 8px;
-  padding-bottom: 8px;
-}
-
-.room-list-modal-search-button {
-  padding: 8px 16px;
-}
-
-.room-list-modal-message {
-  text-align: center;
-  font-size: 13px;
-  color: #ef4444;
-  margin-bottom: 12px;
-}
-
-/* 検索結果カード */
-.room-list-modal-result-card {
-  background-color: #f9fafb;
-  border-radius: 12px;
+  width: 100%;
+  padding: 8px 12px;
   border: 1px solid #e5e7eb;
-  padding: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.room-list-modal-result-main {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.room-list-modal-result-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 9999px;
-  object-fit: cover;
-}
-
-.room-list-modal-result-name {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.room-list-modal-result-role {
-  font-size: 11px;
-  color: #6b7280;
-}
-
-.room-list-modal-result-button {
-  padding: 4px 12px;
-  font-size: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 
 /* ==========================
@@ -2121,4 +2111,207 @@ body {
 .public-profile-action-button-primary {
   background-color: #4b5563;
   color: #fff;
+}
+
+/* =========================================
+   Store Menu Settings Screen
+   ========================================= */
+.store-menu-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #fff;
+}
+
+.store-menu-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* Header */
+.store-menu-header {
+  padding: 16px;
+  border-bottom: 1px solid #f3f4f6;
+  background-color: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.store-menu-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: bold;
+  color: #111827;
+}
+
+/* Content */
+.store-menu-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  /* フッターナビの高さ分だけ余白 */
+  padding-bottom: 80px;
+}
+
+.store-menu-description {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+/* Form Card */
+.store-menu-form-card {
+  background-color: #f9fafb; /* Gray-50 */
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  margin-bottom: 32px;
+}
+
+.store-menu-section-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: #374151;
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+}
+
+.store-menu-icon-plus {
+  background-color: #1f2937; /* Gray-800 */
+  color: #fff;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.store-menu-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.store-menu-label {
+  display: block;
+  font-size: 11px;
+  font-weight: bold;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.store-menu-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box; /* はみ出し防止 */
+}
+.store-menu-input:focus {
+  border-color: #4b5563;
+}
+
+.store-menu-add-btn {
+  width: 100%;
+  background-color: #1f2937; /* Gray-800 */
+  color: #fff;
+  font-weight: bold;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  border: none;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: opacity 0.2s;
+}
+.store-menu-add-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* List Header */
+.store-menu-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.store-menu-count {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+/* List Items */
+.store-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.store-menu-empty {
+  text-align: center;
+  padding: 32px;
+  font-size: 13px;
+  color: #9ca3af;
+  border: 1px dashed #e5e7eb;
+  border-radius: 12px;
+}
+
+.store-menu-item {
+  background-color: #fff;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #f3f4f6;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.store-menu-item-info {
+  flex: 1;
+  min-width: 0; /* truncate用 */
+  padding-right: 12px;
+}
+
+.store-menu-item-label {
+  font-size: 14px;
+  font-weight: bold;
+  color: #1f2937;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.store-menu-item-response {
+  font-size: 12px;
+  color: #9ca3af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.store-menu-delete-btn {
+  font-size: 12px;
+  color: #ef4444; /* Red-500 */
+  background-color: #fef2f2; /* Red-50 */
+  border: 1px solid #fee2e2;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  flex-shrink: 0;
 }

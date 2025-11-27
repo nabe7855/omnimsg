@@ -1,260 +1,155 @@
 "use client";
 
-import { db } from "@/lib/mockSupabase";
-import { Profile, RoomWithPartner, UserRole } from "@/lib/types";
+import { supabase } from "@/lib/supabaseClient";
+import { Profile, RoomWithPartner } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
+
+const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
 
 export const RoomListScreen: React.FC<ScreenProps> = ({
   currentUser,
   navigate,
 }) => {
   const [rooms, setRooms] = useState<RoomWithPartner[]>([]);
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchId, setSearchId] = useState("");
-  const [searchResult, setSearchResult] = useState<Profile | null>(null);
-  const [searchMessage, setSearchMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  // ===== 安全ナビゲーション =====
-  const safeNavigate = useCallback(
-    (path: string) => {
-      setTimeout(() => navigate(path), 0);
-    },
-    [navigate]
-  );
-
-  // ===== ルーム読み込み =====
   useEffect(() => {
-    if (!currentUser) return;
-
-    const load = async () => {
-      const r = await db.getRooms(currentUser.id);
-      const rWithP = await Promise.all(
-        r.map(async (room) => {
-          if (room.type === "dm") {
-            const pid = room.member_ids.find((id) => id !== currentUser.id);
-            const p = pid ? await db.getProfileById(pid) : undefined;
-            return { ...room, partner: p };
-          }
-          return { ...room };
-        })
-      );
-      setRooms(rWithP);
-    };
-
-    load();
-  }, [currentUser]);
-
-  // ===== ID検索 =====
-  const handleSearch = async () => {
-    if (!searchId.trim()) return;
-
-    setSearchResult(null);
-    setSearchMessage("");
-
-    const res = await db.searchProfileByDisplayId(searchId.trim());
-
-    if (!res) {
-      setSearchMessage("ユーザーが見つかりませんでした");
-      return;
-    }
-
-    if (res.id === currentUser?.id) {
-      setSearchMessage("あなた自身のIDです");
-      return;
-    }
-
-    setSearchResult(res);
-  };
-
-  // ===== DM開始 =====
-  const handleStartChat = useCallback(
-    async (target: Profile) => {
+    const fetchRooms = async () => {
       if (!currentUser) return;
 
-      const room = await db.createRoom(currentUser.id, target.id);
-      setShowSearch(false);
-      safeNavigate(`/talk/${room.id}`);
-    },
-    [currentUser, safeNavigate]
-  );
+      try {
+        // 1. 参加ルームID取得
+        const { data: myParticipations } = await supabase
+          .from("room_participants")
+          .select("room_id")
+          .eq("user_id", currentUser.id);
 
-  // ===== ロード中 =====
-  if (!currentUser) {
-    return (
-      <div className="roomlist-message roomlist-message-muted">
-        読み込み中...
-      </div>
-    );
+        if (!myParticipations || myParticipations.length === 0) {
+          setLoading(false);
+          return;
+        }
+
+        const roomIds = myParticipations.map((p) => p.room_id);
+
+        // 2. ルーム情報取得
+        const { data: roomsData } = await supabase
+          .from("rooms")
+          .select("*")
+          .in("id", roomIds)
+          .order("updated_at", { ascending: false });
+
+        // 3. パートナー情報取得
+        const roomsWithPartner: RoomWithPartner[] = [];
+
+        for (const room of roomsData || []) {
+          let partner: Profile | undefined = undefined;
+          let memberIds: string[] = [];
+
+          const { data: participants } = await supabase
+            .from("room_participants")
+            .select("user_id")
+            .eq("room_id", room.id);
+
+          if (participants) {
+            memberIds = participants.map((p) => p.user_id);
+            if (room.type === "dm") {
+              const partnerIdObj = participants.find(
+                (p) => p.user_id !== currentUser.id
+              );
+              if (partnerIdObj) {
+                const { data: pData } = await supabase
+                  .from("profiles")
+                  .select("*")
+                  .eq("id", partnerIdObj.user_id)
+                  .single();
+                if (pData) partner = pData as Profile;
+              }
+            }
+          }
+          roomsWithPartner.push({ ...room, partner, member_ids: memberIds });
+        }
+        setRooms(roomsWithPartner);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchRooms();
+  }, [currentUser]);
+
+  if (loading) {
+    return <div className="room-list-loading">読み込み中...</div>;
   }
 
-  // ===== 画面本体 =====
   return (
-    <div className="roomlist-screen">
+    <div className="room-list-screen">
       {/* Header */}
-      <div className="roomlist-header">
-        <h2 className="heading-xl">トーク一覧</h2>
+      {/* <div className="room-list-header">
+        <h2>トーク一覧</h2>
+      </div> */}
 
-        <div className="roomlist-header-actions">
-          <button
-            onClick={() => {
-              setSearchId("");
-              setSearchResult(null);
-              setSearchMessage("");
-              setShowSearch(true);
-            }}
-            className="btn-icon roomlist-search-btn"
-          >
-            <svg viewBox="0 0 24 24" className="roomlist-search-icon">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.5}
-                stroke="currentColor"
-                fill="none"
-                d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-              />
-            </svg>
-          </button>
+      {/* ※ Layout.tsxで共通ヘッダーが出ているなら上記は不要です */}
 
-          {currentUser.role === UserRole.STORE && (
-            <button
-              onClick={() => safeNavigate("/group/create")}
-              className="roomlist-chip roomlist-chip-pink"
-            >
-              ＋グループ
-            </button>
-          )}
-
-          {currentUser.role !== UserRole.USER && (
-            <button
-              onClick={() => safeNavigate("/broadcast")}
-              className="roomlist-chip roomlist-chip-indigo"
-            >
-              一斉送信
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ===== トーク一覧 ===== */}
-      <div className="roomlist-list">
-        {rooms.map((r) => {
-          let name = "不明なルーム";
-          let icon = "https://via.placeholder.com/50";
-          let subText = r.last_message || "会話を始める";
-
-          if (r.type === "group") {
-            name = r.group_name || "グループチャット";
-            icon = "https://ui-avatars.com/api/?name=Group&background=random";
-          } else if (r.partner) {
-            name = r.partner.name;
-            icon = r.partner.avatar_url;
-          }
-
-          return (
-            <div
-              key={r.id}
-              className="roomlist-room-card"
-              onClick={() => safeNavigate(`/talk/${r.id}`)}
-            >
-              <img src={icon} className="avatar" />
-              <div className="roomlist-room-text">
-                <div className="roomlist-room-top">
-                  <div className="roomlist-room-name">
-                    {r.type === "group" && (
-                      <span className="roomlist-group-badge">GROUP</span>
-                    )}
-                    {name}
-                  </div>
-                  <div className="roomlist-room-time">
-                    {new Date(r.updated_at).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                </div>
-                <div className="roomlist-room-sub">{subText}</div>
-              </div>
-            </div>
-          );
-        })}
-
-        {rooms.length === 0 && (
-          <div className="roomlist-empty">
-            まだメッセージはありません。
-            {currentUser.role === UserRole.USER && (
-              <div
-                className="roomlist-empty-link"
-                onClick={() => safeNavigate("/home")}
-              >
-                相手を探す
-              </div>
-            )}
+      <div className="room-list-content">
+        {rooms.length === 0 ? (
+          <div className="room-list-empty">
+            <p>まだメッセージはありません</p>
+            <span className="room-list-empty-sub">
+              キャスト画面からメッセージを送ってみましょう
+            </span>
           </div>
+        ) : (
+          rooms.map((room) => {
+            const title =
+              room.type === "group"
+                ? room.group_name || "グループ"
+                : room.partner?.name || "退会済みユーザー";
+
+            const avatarUrl =
+              room.type === "group"
+                ? `https://ui-avatars.com/api/?name=${title}&background=random`
+                : room.partner?.avatar_url || PLACEHOLDER_AVATAR;
+
+            const date = new Date(room.updated_at);
+            const dateStr =
+              date.toLocaleDateString() === new Date().toLocaleDateString()
+                ? date.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })
+                : date.toLocaleDateString();
+
+            return (
+              <div
+                key={room.id}
+                className="room-list-item"
+                onClick={() => navigate(`/talk/${room.id}`)}
+              >
+                <div className="room-list-avatar-wrapper">
+                  <img
+                    src={avatarUrl}
+                    alt={title}
+                    className="room-list-avatar"
+                    onError={(e) =>
+                      ((e.target as HTMLImageElement).src = PLACEHOLDER_AVATAR)
+                    }
+                  />
+                </div>
+
+                <div className="room-list-info">
+                  <div className="room-list-top-row">
+                    <h3 className="room-list-title">{title}</h3>
+                    <span className="room-list-date">{dateStr}</span>
+                  </div>
+                  <p className="room-list-message">メッセージを確認する &gt;</p>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
-
-      {/* ===== ID検索モーダル ===== */}
-      {showSearch && (
-        <div className="roomlist-modal-overlay">
-          <div className="roomlist-modal">
-            <div className="roomlist-modal-header">
-              <h3 className="roomlist-modal-title">IDで検索</h3>
-              <button
-                onClick={() => setShowSearch(false)}
-                className="roomlist-modal-close"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="roomlist-modal-search">
-              <input
-                type="text"
-                value={searchId}
-                onChange={(e) => setSearchId(e.target.value)}
-                placeholder="IDを入力"
-                className="input-field"
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              />
-              <button onClick={handleSearch} className="btn-primary">
-                検索
-              </button>
-            </div>
-
-            {searchMessage && (
-              <div className="roomlist-modal-error">{searchMessage}</div>
-            )}
-
-            {searchResult && (
-              <div className="roomlist-result-card">
-                <div className="roomlist-result-left">
-                  <img
-                    src={searchResult.avatar_url}
-                    className="roomlist-result-avatar"
-                  />
-                  <div>
-                    <div className="roomlist-result-name">
-                      {searchResult.name}
-                    </div>
-                    <div className="roomlist-result-role">
-                      {searchResult.role}
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleStartChat(searchResult)}
-                  className="btn-primary roomlist-result-btn"
-                >
-                  トーク
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
