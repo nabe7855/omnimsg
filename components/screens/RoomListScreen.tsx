@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
 import { db } from "@/lib/mockSupabase";
-import { Profile, UserRole, RoomWithPartner } from "@/lib/types";
+import { Profile, RoomWithPartner, UserRole } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
+import React, { useCallback, useEffect, useState } from "react";
 
 export const RoomListScreen: React.FC<ScreenProps> = ({
   currentUser,

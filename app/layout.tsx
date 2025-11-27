@@ -1,7 +1,8 @@
 // app/layout.tsx
 "use client";
 
-import { useAuth } from "@/hooks/useAuth"; // ← あなたのプロジェクトの仕様に合わせた
+import { useAuth } from "@/hooks/useAuth";
+import "@/styles/layout.css";
 import { usePathname, useRouter } from "next/navigation";
 import "./globals.css";
 
@@ -10,11 +11,21 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
   const router = useRouter();
-  const { currentUser } = useAuth();
+  const pathname = usePathname();
+  const { currentUser, loaded } = useAuth();
 
-  // --- ページタイトルを Next.js 版に置き換え ---
+  // auth ロード完了前は空のコンテナだけ出す
+  if (!loaded) {
+    return (
+      <html lang="ja">
+        <body>
+          <div className="app-container" />
+        </body>
+      </html>
+    );
+  }
+
   const getPageTitle = () => {
     if (pathname === "/login") return "店舗 ログイン";
     if (pathname === "/home") return "ホーム";
@@ -29,13 +40,56 @@ export default function RootLayout({
     return "";
   };
 
+  const getFooterItems = () => {
+    if (!currentUser) return [];
+
+    const role = currentUser.role;
+
+    if (role === "user") {
+      return [
+        { id: "/home", label: "ホーム", icon: "🏠" },
+        { id: "/talks", label: "トーク", icon: "💬" },
+        { id: "/profile", label: "マイページ", icon: "👤" },
+      ];
+    }
+
+    if (role === "cast") {
+      return [
+        { id: "/talks", label: "トーク", icon: "💬" },
+        { id: "/profile", label: "マイページ", icon: "👤" },
+      ];
+    }
+
+    if (role === "store") {
+      return [
+        { id: "/store/casts", label: "キャスト", icon: "👥" },
+        { id: "/talks", label: "トーク", icon: "💬" },
+        { id: "/store/menu", label: "メニュー", icon: "📋" },
+        { id: "/profile", label: "マイページ", icon: "👤" },
+      ];
+    }
+
+    return [];
+  };
+
+  const footerItems = getFooterItems();
+
+  // ★修正箇所：ログイン画面以外、かつユーザーが存在する場合にのみフッターを表示
+  const shouldShowFooter =
+    currentUser && footerItems.length > 0 && pathname !== "/login";
+
+  // デバッグ用（不要なら削除してください）
+  console.log("Current User:", currentUser);
+  console.log("Loaded:", loaded);
+  console.log("User Role:", currentUser?.role);
+  console.log("Footer Items:", footerItems);
+
   return (
     <html lang="ja">
       <body>
         <div className="app-container">
-          {/* --- Header --- */}
+          {/* Header */}
           <header className="app-header">
-            {/* 戻るボタン（/login 以外で表示） */}
             {pathname !== "/login" && (
               <button className="back-btn" onClick={() => router.back()}>
                 ← 戻る
@@ -56,30 +110,27 @@ export default function RootLayout({
             </div>
           </header>
 
-          {/* --- Main content --- */}
-          <main className="app-main">{children}</main>
+          {/* Main（下に 60px 余白を持つスクロール領域） */}
+          <main className="app-main content-area">{children}</main>
 
-          {/* --- Footer --- */}
-          {currentUser && (
-            <footer className="app-footer">
-              <nav className="footer-nav">
-                <button onClick={() => router.push("/home")}>ホーム</button>
-                <button onClick={() => router.push("/talks")}>トーク</button>
-
-                {currentUser.role === "store" && (
-                  <>
-                    <button onClick={() => router.push("/store/casts")}>
-                      キャスト
-                    </button>
-                    <button onClick={() => router.push("/store/menu")}>
-                      メニュー
-                    </button>
-                  </>
-                )}
-
-                <button onClick={() => router.push("/profile")}>マイ</button>
-              </nav>
-            </footer>
+          {/* Bottom Nav */}
+          {shouldShowFooter && (
+            <nav className="bottom-nav">
+              {footerItems.map((item) => (
+                <button
+                  key={item.id}
+                  className={`nav-item ${
+                    pathname === item.id || pathname.startsWith(item.id + "/")
+                      ? "active"
+                      : ""
+                  }`}
+                  onClick={() => router.push(item.id)}
+                >
+                  <span className="nav-icon">{item.icon}</span>
+                  <span className="nav-label">{item.label}</span>
+                </button>
+              ))}
+            </nav>
           )}
         </div>
       </body>

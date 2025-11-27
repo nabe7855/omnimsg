@@ -1,27 +1,20 @@
-import React, { useState, useEffect } from "react";
-import { UserRole } from "@/lib/types";
+"use client";
+
 import { APP_NAME } from "@/constants";
+import { supabase } from "@/lib/supabaseClient";
+import { UserRole } from "@/lib/types";
 import { LoginProps } from "@/lib/types/screen";
+import React, { useState } from "react";
 
 export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [isRegister, setIsRegister] = useState(false);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [loginDone, setLoginDone] = useState(false);
-
-  // ============================
-  // ログイン完了後のフラグ（今は特に何もしない）
-  // ============================
-  useEffect(() => {
-    if (loginDone) {
-      // ここでは遷移処理は行わない想定
-      // （親側の useAuth などでハンドリング）
-    }
-  }, [loginDone]);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
@@ -31,10 +24,11 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     setName("");
   };
 
-  const handleBack = () => {
-    setSelectedRole(null);
-  };
+  const handleBack = () => setSelectedRole(null);
 
+  // ==========================================================
+  // 🚀 Supabase 認証処理
+  // ==========================================================
   const handleSubmit = async () => {
     if (!email || !password) {
       alert("メールアドレスとパスワードを入力してください");
@@ -48,16 +42,68 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
 
     setIsProcessing(true);
 
-    await onLogin(
-      selectedRole,
-      isRegister ? "register" : "login",
-      email,
-      password,
-      name
-    );
+    try {
+      let supaUser = null;
+
+      // ---------------------------
+      // ① 新規登録
+      // ---------------------------
+      if (isRegister) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+        if (error) throw error;
+
+        supaUser = data.user;
+
+        // プロフィールを作成
+        if (supaUser) {
+          await supabase.from("profiles").insert([
+            {
+              id: supaUser.id,
+              email: email,
+              role: selectedRole,
+              name: name,
+              display_id: supaUser.id.slice(0, 8),
+              avatar_url: "",
+              bio: "",
+              store_id: null,
+              business_hours: "",
+            },
+          ]);
+        }
+      }
+
+      // ---------------------------
+      // ② ログイン
+      // ---------------------------
+      else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+
+        supaUser = data.user;
+      }
+
+      // ---------------------------
+      // ③ ここではログイン処理はしない
+      //     → onLogin は "遷移だけ" に使う
+      // ---------------------------
+      await onLogin(
+        selectedRole,
+        isRegister ? "register" : "login",
+        email,
+        password,
+        name
+      );
+    } catch (err: any) {
+      alert(err.message || "ログインに失敗しました");
+    }
 
     setIsProcessing(false);
-    setLoginDone(true);
   };
 
   const roleLabels: Record<UserRole, string> = {
@@ -68,9 +114,9 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
 
   const isCast = selectedRole === UserRole.CAST;
 
-  // ============================
-  // 最初のロール選択画面
-  // ============================
+  // ==========================================================
+  // 🚀 ロール選択画面
+  // ==========================================================
   if (!selectedRole) {
     return (
       <div className="login-screen login-screen-role-select">
@@ -107,16 +153,12 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     );
   }
 
-  // ============================
-  // メール＋パスワード入力画面
-  // ============================
+  // ==========================================================
+  // 🚀 メール・パスワード入力画面
+  // ==========================================================
   return (
     <div className="login-screen login-screen-form">
-      <button
-        onClick={handleBack}
-        className="login-back-button"
-        type="button"
-      >
+      <button onClick={handleBack} className="login-back-button" type="button">
         <span className="login-back-icon">←</span>
         <span>戻る</span>
       </button>
@@ -125,14 +167,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
         {roleLabels[selectedRole]} {isRegister ? "新規登録" : "ログイン"}
       </h2>
 
-      <p className="login-form-description">
-        {isCast
-          ? "店舗から発行されたアカウントでログインしてください。"
-          : isRegister
-          ? "必要な情報を入力してアカウントを作成してください。"
-          : "登録済みのメールアドレスとパスワードを入力してください。"}
-      </p>
-
       <div className="login-form-fields">
         {isRegister && (
           <div className="input-group">
@@ -140,7 +174,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
             <input
               type="text"
               className="input-field"
-              placeholder="例: 山田 太郎"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
@@ -152,20 +185,9 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           <input
             type="email"
             className="input-field"
-            placeholder="example@mail.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          {!isRegister && (
-            <div className="login-helper-text">
-              デモ用:{" "}
-              {selectedRole === UserRole.USER
-                ? "user@example.com"
-                : selectedRole === UserRole.STORE
-                ? "store@example.com"
-                : "cast1@store.com"}
-            </div>
-          )}
         </div>
 
         <div className="input-group">
@@ -173,20 +195,15 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           <input
             type="password"
             className="input-field"
-            placeholder="********"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
-          {!isRegister && (
-            <div className="login-helper-text">デモ用: password</div>
-          )}
         </div>
 
         <button
           onClick={handleSubmit}
           disabled={isProcessing}
           className="login-submit-button"
-          type="button"
         >
           {isProcessing
             ? "処理中..."
@@ -205,7 +222,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
             <button
               onClick={() => setIsRegister(!isRegister)}
               className="login-toggle-link"
-              type="button"
             >
               {isRegister ? "ログイン画面へ" : "新規登録する"}
             </button>

@@ -1,16 +1,24 @@
-import React from "react";
 import { ProfileProps } from "@/lib/types/screen";
+import React from "react";
 
 export const ProfileScreen: React.FC<ProfileProps> = ({
   currentUser,
   onLogout,
 }) => {
-  // ============================
-  // ❶ currentUser の読み込み待ち（安全）
-  // ============================
+  // =================================================
+  // ❶ currentUser がまだ無い → ローディング対応
+  // =================================================
   if (!currentUser) {
     return <div className="profile-loading">読み込み中...</div>;
   }
+
+  // =================================================
+  // ❷ avatar が存在しない・空文字・null・undefined の場合
+  //    → 必ず placeholder にフォールバックさせる
+  // =================================================
+  const avatarSrc = currentUser.avatar_url?.trim()
+    ? currentUser.avatar_url
+    : "/placeholder-avatar.png"; // public/ に置く
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(currentUser.display_id);
@@ -18,9 +26,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
   };
 
   const handleLogoutClick = async () => {
-    // ============================
-    // ❷ onLogout を安全に実行
-    // ============================
     await onLogout();
   };
 
@@ -32,9 +37,14 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         {/* Avatar */}
         <div className="profile-avatar-wrapper">
           <img
-            src={currentUser.avatar_url}
-            alt="me"
+            src={avatarSrc}
+            alt="avatar"
             className="profile-avatar-image"
+            onError={(e) => {
+              // 万が一画像URLが不正でも fallback
+              (e.currentTarget as HTMLImageElement).src =
+                "/placeholder-avatar.png";
+            }}
           />
         </div>
 
@@ -44,15 +54,13 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         {/* Role */}
         <span className="profile-role-badge">{currentUser.role}</span>
 
-        {/* Info Blocks */}
+        {/* Info Cards */}
         <div className="profile-cards">
           {/* Display ID */}
           <div className="profile-card profile-card-id">
             <div className="profile-card-left">
               <label className="profile-card-label">ID</label>
-              <div className="profile-id-value">
-                {currentUser.display_id}
-              </div>
+              <div className="profile-id-value">{currentUser.display_id}</div>
             </div>
 
             <button
@@ -67,9 +75,7 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
           {/* Email */}
           <div className="profile-card">
             <label className="profile-card-label">メールアドレス</label>
-            <div className="profile-email">
-              {currentUser.email || "未設定"}
-            </div>
+            <div className="profile-email">{currentUser.email || "未設定"}</div>
           </div>
 
           {/* Bio */}
