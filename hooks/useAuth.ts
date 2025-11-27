@@ -2,6 +2,7 @@
 
 import { supabase } from "@/lib/supabaseClient";
 import { Profile, UserRole } from "@/lib/types";
+import { Session } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -11,50 +12,102 @@ export const useAuth = () => {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [loaded, setLoaded] = useState(false);
 
+  // 共通のユーザー情報取得ロジック
+  const fetchAndSetUser = async (session: Session | null) => {
+    // セッションがない場合はクリアして表示許可
+    if (!session?.user) {
+      setCurrentUser(null);
+      setLoaded(true);
+      return;
+    }
+
+    // 1. まず手元にある情報（メタデータ）だけで一旦ユーザー情報をセットする
+    let role = session.user.user_metadata.role;
+    let name = session.user.user_metadata.name;
+    const userId = session.user.id;
+
+    // ★重要：DBの結果を待たずに、まずは画面を表示させてしまう！
+    setCurrentUser({
+      id: userId,
+      email: session.user.email!,
+      name: name || "",
+      role: role as UserRole, // まだ undefined かもしれないが一旦許容
+      avatar_url: session.user.user_metadata.avatar_url || "",
+      display_id: session.user.user_metadata.display_id || "",
+      bio: session.user.user_metadata.bio || "",
+    });
+    setLoaded(true); // ★ここで画面ロック解除！
+
+    // 2. もし role が欠けていたら、裏側でこっそりDBに取りに行く
+    if (!role) {
+      console.log("Role missing. Fetching from DB in background...");
+
+      // 非同期でDB問い合わせ
+      supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle()
+        .then(({ data: profile, error }) => {
+          if (error) {
+            console.error("DB Error:", error);
+          }
+          if (profile) {
+            console.log("Role fetched from DB:", profile.role);
+            // 情報が取れたら、後追いでユーザー情報を更新する
+            setCurrentUser((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                role: profile.role as UserRole,
+                name: profile.name || prev.name,
+              };
+            });
+          }
+        });
+    }
+  };
+
   // ============================================
-  // ★ 初回ロードで Supabase セッション復元
+  // ★ 監視リスナーを設定
   // ============================================
   useEffect(() => {
-    const loadUser = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    let mounted = true;
 
-      if (session?.user) {
-        // 1. まずメタデータから情報を取得
-        let role = session.user.user_metadata.role;
-        let name = session.user.user_metadata.name;
-
-        // 2. もしメタデータになければ、profiles テーブルを確認しに行く
-        // (※ Supabaseに "profiles" テーブルがある場合のみ有効)
-        if (!role) {
-          const { data: profile } = await supabase
-            .from("profiles")
-            .select("*")
-            .eq("id", session.user.id)
-            .single();
-
-          if (profile) {
-            role = profile.role;
-            name = profile.name || name;
-          }
+    const initAuth = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (mounted) {
+          await fetchAndSetUser(session);
         }
-
-        setCurrentUser({
-          id: session.user.id,
-          email: session.user.email!,
-          name: name || "",
-          role: role as UserRole, // これで role が入る
-          avatar_url: session.user.user_metadata.avatar_url || "",
-          display_id: session.user.user_metadata.display_id || "",
-          bio: session.user.user_metadata.bio || "",
-        });
+      } catch (e) {
+        console.error("Session check error:", e);
+        if (mounted) setLoaded(true);
       }
-
-      setLoaded(true);
     };
 
-    loadUser();
+    initAuth();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      console.log("Auth State Changed:", event);
+
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        await fetchAndSetUser(session);
+      } else if (event === "SIGNED_OUT") {
+        setCurrentUser(null);
+        setLoaded(true);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   // ============================================
@@ -67,54 +120,44 @@ export const useAuth = () => {
     password: string,
     name?: string
   ) => {
-    let authRes;
+    try {
+      let authRes;
 
-    if (mode === "register") {
-      authRes = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { name, role },
-        },
-      });
-    } else {
-      authRes = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      if (mode === "register") {
+        authRes = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { name, role },
+          },
+        });
+      } else {
+        authRes = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+      }
+
+      if (authRes.error) {
+        alert(authRes.error.message);
+        return;
+      }
+
+      // 画面遷移
+      const startPath =
+        role === UserRole.STORE
+          ? "/store/casts"
+          : role === UserRole.USER
+          ? "/home"
+          : "/talks";
+
+      router.push(startPath);
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("エラーが発生しました");
     }
-
-    if (authRes.error) {
-      alert(authRes.error.message);
-      return;
-    }
-
-    const user = authRes.data.user;
-    if (!user) return;
-
-    setCurrentUser({
-      id: user.id,
-      email: user.email!,
-      name: user.user_metadata.name || "",
-      role: user.user_metadata.role,
-      avatar_url: user.user_metadata.avatar_url || "",
-      display_id: user.user_metadata.display_id || "",
-      bio: user.user_metadata.bio || "",
-    });
-
-    const startPath =
-      role === UserRole.STORE
-        ? "/store/casts"
-        : role === UserRole.USER
-        ? "/home"
-        : "/talks";
-
-    router.push(startPath);
   };
 
-  // ============================================
-  // ★ ログアウト
-  // ============================================
   const logout = async () => {
     await supabase.auth.signOut();
     setCurrentUser(null);
