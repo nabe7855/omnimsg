@@ -1,26 +1,1854 @@
-@import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ==========================
+   Reset
+========================== */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
+  height: 100%;
+}
+
+/* ==========================
+   Global Base
+========================== */
+body {
+  background: #ffffff;
+  color: #111827;
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== 一斉送信画面 ===== */
+
+.broadcast-page {
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.broadcast-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+  gap: 8px;
+}
+
+.broadcast-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+}
+
+/* 戻るボタン（アイコンボタン） */
+.icon-button {
+  border: none;
+  background: #ffffff;
+  border-radius: 999px;
+  padding: 6px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-button:hover {
+  background: #f3f4f6;
+}
+
+.icon-sm {
+  width: 20px;
+  height: 20px;
+}
+
+/* 本文カード */
+.broadcast-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.broadcast-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+/* テキストエリア */
+.broadcast-textarea {
+  width: 100%;
+  min-height: 130px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #111827;
+  outline: none;
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.broadcast-textarea::placeholder {
+  color: #9ca3af;
+}
+
+.broadcast-textarea:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.16);
+}
+
+/* 送信ボタン */
+.broadcast-submit {
+  margin-top: 4px;
+}
+
+.broadcast-submit:disabled {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* ==========================
+   Chat Detail Layout
+========================== */
+
+.chat-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  background-color: #f3f4f6; /* 薄いグレー */
+}
+
+.chat-loading {
+  padding: 16px;
+  text-align: center;
+  color: #9ca3af;
+}
+
+/* ----- Header ----- */
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  position: relative;
+  z-index: 10;
+}
+
+.chat-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-header-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.chat-header-main:active {
+  opacity: 0.7;
+}
+
+.chat-header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  object-fit: cover;
+  background: #e5e7eb;
+}
+
+.chat-header-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.chat-header-subtitle {
+  font-size: 10px;
+  color: #6b7280;
+}
+
+/* 共通アイコンサイズ */
+.icon-20 {
+  width: 20px;
+  height: 20px;
+}
+
+/* ----- Messages ----- */
+
+.chat-messages {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-message-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* バブル共通 */
+.chat-bubble-me,
+.chat-bubble-other,
+.chat-bubble-bot {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* 自分のメッセージ */
+.chat-bubble-me {
+  align-self: flex-end;
+  background: #4f46e5;
+  color: #ffffff;
+  border-bottom-right-radius: 4px;
+}
+
+/* 相手のメッセージ */
+.chat-bubble-other {
+  align-self: flex-start;
+  background: #e5e7eb;
+  color: #111827;
+  border-bottom-left-radius: 4px;
+}
+
+/* Botメッセージ */
+.chat-bubble-bot {
+  align-self: flex-start;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-bottom-left-radius: 4px;
+  border: 1px solid #bfdbfe;
+}
+
+.bot-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 2px;
+  color: #6366f1;
+}
+
+/* タイムスタンプ */
+.chat-timestamp {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.chat-timestamp-right {
+  align-self: flex-end;
+  margin-right: 4px;
+}
+
+.chat-timestamp-left {
+  align-self: flex-start;
+  margin-left: 8px;
+}
+
+/* ----- Input Bar ----- */
+
+.chat-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-top: 1px solid #e5e7eb;
+}
+
+.chat-input-field {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 9999px;
+  border: none;
+  background: #f3f4f6;
+  font-size: 14px;
+}
+
+.chat-input-field:focus {
+  outline: 1px solid #4f46e5;
+  background: #ffffff;
+}
+
+.chat-send-button {
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  border: none;
+  background: #4f46e5;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.05s ease;
+}
+
+.chat-send-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chat-send-button:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+/* ==========================
+   Group Manage Screen
+========================== */
+
+.group-manage-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #ffffff;
+}
+
+.group-loading {
+  padding: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+.group-manage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+.group-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.group-back-label {
+  font-size: 13px;
+}
+
+.group-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1f2933;
+}
+
+.group-save-button {
+  border: none;
+  background: transparent;
+  color: #4f46e5; /* primary */
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+/* 共通アイコンサイズ（なければ追加） */
+.icon-20 {
+  width: 20px;
+  height: 20px;
+}
+
+/* ----- Body ----- */
+
+.group-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* グループ名の欄 */
+.group-field {
+  margin-bottom: 24px;
+}
+
+/* input-label, input-field は共通スタイルがある想定
+   なければ例えばこんな感じで：
+   .input-label { display:block; font-size:12px; font-weight:700; margin-bottom:4px; }
+   .input-field { width:100%; padding:8px 10px; border-radius:8px; border:1px solid #d1d5db; font-size:14px; }
+*/
+
+/* ----- Sections (キャスト / ユーザー) ----- */
+
+.group-section {
+  margin-bottom: 24px;
+}
+
+.group-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.group-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* user-card 自体のベースは共通で定義しておくとよい:
+   .user-card { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; border-radius:12px; background:#ffffff; border:1px solid #e5e7eb; cursor:pointer; }
+*/
+
+.group-member-card {
+  border-width: 1px;
+  border-style: solid;
+  border-color: #e5e7eb;
+  background: #ffffff;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.group-member-card-selected {
+  border-color: #4f46e5;
+  background: #e0e7ff;
+}
+
+.group-member-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.group-member-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  object-fit: cover;
+}
+
+.group-member-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.group-member-role {
+  font-size: 10px;
+}
+
+.group-member-role-cast {
+  color: #ec4899; /* ピンク系 */
+}
+
+.group-member-role-user {
+  color: #6b7280; /* グレー */
+}
+
+.group-check-icon {
+  width: 20px;
+  height: 20px;
+  color: #4f46e5;
+}
+
+/* ユーザー0件の時のメッセージ */
+.group-empty-text {
+  font-size: 13px;
+  color: #9ca3af;
+  padding: 8px 2px;
+}
+
+/* 削除ボタン */
+
+.group-delete-button {
+  display: block;
+  width: 100%;
+  padding: 12px 16px;
+  margin-top: 32px;
+  border-radius: 12px;
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #dc2626;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* ==========================
+      Home Screen
+========================== */
+
+.home-screen {
+  padding: 16px;
+}
+
+.home-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: #1f2937;
+}
+
+/* 検索ボックス */
+.home-search-box {
+  margin-bottom: 16px;
+}
+
+.home-search-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  outline: none;
+  background: #f9fafb;
+}
+
+.home-search-input:focus {
+  border-color: #6366f1;
+}
+
+/* ユーザー一覧 */
+.home-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* user-card の完全置き換え版 */
+.home-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.home-user-card:hover {
+  background: #f3f4f6;
+}
+
+/* 画像 */
+.home-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 9999px;
+  object-fit: cover;
+  background: #e5e7eb;
+}
+
+/* テキスト */
+.home-user-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-user-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.home-user-caption {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+/* ==========================
+   Login Screen 共通
+========================== */
+
+.login-screen {
+  box-sizing: border-box;
+  padding: 24px;
+  background-color: #ffffff;
+  color: #111827;
+  min-height: 100vh;
+}
+
+/* ---- ロール選択画面 ---- */
+
+.login-screen-role-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.login-role-inner {
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+}
+
+.login-app-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #4f46e5; /* primary */
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.login-app-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 40px;
+}
+
+.login-role-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #374151;
+  margin-bottom: 12px;
+}
+
+.login-role-button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ロール選択ボタン共通 */
+.login-role-button {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: 9999px;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+  transition: transform 0.1s ease, box-shadow 0.1s ease, opacity 0.15s ease;
+}
+
+.login-role-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
+.login-role-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.07);
+  opacity: 0.9;
+}
+
+/* 役割別カラー */
+.login-role-button-user {
+  background-color: #4f46e5;
+  color: #ffffff;
+}
+
+.login-role-button-cast {
+  background-color: #ec4899;
+  color: #ffffff;
+}
+
+.login-role-button-store {
+  background-color: #111827;
+  color: #ffffff;
+}
+
+/* ---- ログイン／登録フォーム ---- */
+
+.login-screen-form {
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.login-back-button {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  margin-bottom: 24px;
+  border: none;
+  background: transparent;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.login-back-button:hover {
+  color: #374151;
+}
+
+.login-back-icon {
+  font-size: 14px;
+}
+
+.login-form-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.login-form-description {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 24px;
+}
+
+.login-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- 共通フォームUI（他画面でも使える） ---- */
+
+.input-group {
+  width: 100%;
+}
+
+.input-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 6px;
+}
+
+.input-field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  background-color: #f9fafb;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.input-field:focus {
+  border-color: #4f46e5;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.1);
+}
+
+/* デモ用ヒントテキスト */
+.login-helper-text {
+  font-size: 10px;
+  color: #9ca3af;
+  text-align: right;
+  margin-top: 4px;
+}
+
+/* 送信ボタン */
+.login-submit-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px 16px;
+  border-radius: 9999px;
+  border: none;
+  background-color: #4f46e5;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease,
+    opacity 0.15s ease;
+  box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+}
+
+.login-submit-button:hover {
+  background-color: #4338ca;
+}
+
+.login-submit-button:disabled {
+  opacity: 0.65;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* 登録／ログイン切り替え部分 */
+.login-toggle-area {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.login-toggle-message {
+  font-size: 13px;
+  color: #6b7280;
+  margin-bottom: 8px;
+}
+
+.login-toggle-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #4f46e5;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.login-toggle-link:hover {
+  color: #3730a3;
+}
+
+/* ==========================
+   Profile Screen
+========================== */
+
+.profile-loading {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280; /* グレー */
+  font-size: 14px;
+}
+
+/* 画面全体 */
+.profile-screen {
+  box-sizing: border-box;
+  padding: 24px;
+}
+
+/* 見出し */
+.profile-heading {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 16px;
+}
+
+/* コンテンツ本体 */
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* アバター */
+.profile-avatar-wrapper {
+  width: 96px;
+  height: 96px;
+  border-radius: 9999px;
+  background-color: #e5e7eb;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.profile-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 名前 */
+.profile-name {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* ロール表示 */
+.profile-role-badge {
+  display: inline-block;
+  margin-bottom: 24px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background-color: #f3f4f6;
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* カードコンテナ */
+.profile-cards {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* カード共通 */
+.profile-card {
+  background-color: #ffffff;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid #f3f4f6;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+/* IDカードは右側にボタン */
+.profile-card-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.profile-card-left {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ラベル */
+.profile-card-label {
+  display: block;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+}
+
+/* ID文字 */
+.profile-id-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 16px;
+  font-weight: 700;
+  color: #4f46e5; /* primary */
+}
+
+/* メール */
+.profile-email {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 14px;
+  color: #374151;
+}
+
+/* 自己紹介 */
+.profile-bio {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #374151;
+}
+
+/* コピー ボタン */
+.profile-copy-button {
+  border: none;
+  background: none;
+  font-size: 12px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.profile-copy-button:hover {
+  color: #111827;
+}
+
+/* ログアウトボタン */
+.profile-logout-button {
+  width: 100%;
+  max-width: 480px;
+  margin-top: 32px;
+  padding: 12px 16px;
+  border-radius: 9999px;
+  border: none;
+  background-color: #ef4444;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.profile-logout-button:hover {
+  background-color: #dc2626;
+}
+
+.profile-logout-button:active {
+  opacity: 0.95;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.25);
+}
+
+/* ==========================
+   Public Profile Screen
+========================== */
+
+/* 共通メッセージ (ロード中 / エラー) */
+.public-profile-message {
+  padding: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #111827;
+}
+
+.public-profile-message-muted {
+  color: #9ca3af;
+}
+
+/* 画面ベース */
+.public-profile-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: #ffffff;
+}
+
+/* ヘッダー */
+.public-profile-header {
+  padding: 16px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.public-profile-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.public-profile-back-btn:hover {
+  color: #111827;
+}
+
+.public-profile-back-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* メインコンテンツ */
+.public-profile-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* アバター */
+.public-profile-avatar-wrapper {
+  width: 128px;
+  height: 128px;
+  border-radius: 9999px;
+  background-color: #e5e7eb;
+  margin-bottom: 24px;
+  overflow: hidden;
+  border: 4px solid #f9fafb;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.16);
+}
+
+.public-profile-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 名前 */
+.public-profile-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+/* バッジ行 */
+.public-profile-badge-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+
+/* ロールバッジ共通 */
+.public-profile-role-badge {
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ロール別色 */
+.public-profile-role-cast {
+  background-color: #ffe4ef;
+  color: #db2777;
+}
+
+.public-profile-role-store {
+  background-color: #e0e7ff;
+  color: #4f46e5;
+}
+
+.public-profile-role-user {
+  background-color: #e5e7eb;
+  color: #4b5563;
+}
+
+/* 店舗名バッジ（Cast の所属店舗） */
+.public-profile-store-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  background-color: #f3f4f6;
+  color: #4b5563;
+}
+
+.public-profile-store-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* カード一覧 */
+.public-profile-card-list {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* カード */
+.public-profile-card {
+  background-color: #f9fafb;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+/* ラベル */
+.public-profile-card-label {
+  display: block;
+  font-size: 11px;
+  color: #9ca3af;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+/* 本文 */
+.public-profile-card-text {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+}
+
+/* フッター（ボタンエリア） */
+.public-profile-footer {
+  padding: 24px;
+  border-top: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+}
+
+/* アクションボタン共通（横幅・アイコン位置など） */
+.public-profile-action-button {
+  width: 100%;
+  max-width: 480px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+/* 上側ボタンの余白 */
+.public-profile-action-button-primary {
+  margin-bottom: 12px;
+}
+
+/* ===============================
+   RoomList Screen
+=============================== */
+
+.roomlist-screen {
+  padding: 16px;
+  position: relative;
+  height: 100%;
+  background: #fff;
+}
+
+/* Header */
+.roomlist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.roomlist-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.roomlist-search-btn {
+  background: #fff;
+  border: 1px solid #f3f4f6;
+  padding: 6px;
+  border-radius: 50%;
+}
+
+.roomlist-search-icon {
+  width: 20px;
+  height: 20px;
+  color: #6b7280;
+}
+
+/* Chips */
+.roomlist-chip {
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 9999px;
+}
+
+.roomlist-chip-pink {
+  background: #ffe4ef;
+  border: 1px solid #fbcfe8;
+  color: #db2777;
+}
+
+.roomlist-chip-indigo {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  color: #4f46e5;
+}
+
+/* List */
+.roomlist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Room Card */
+.roomlist-room-card {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #f3f4f6;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  cursor: pointer;
+}
+
+.roomlist-room-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.roomlist-room-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.roomlist-room-name {
+  font-weight: 700;
+  color: #111827;
+  display: flex;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.roomlist-group-badge {
+  font-size: 8px;
+  padding: 1px 4px;
+  background: #e5e7eb;
+  color: #4b5563;
+  border-radius: 4px;
+}
+
+.roomlist-room-time {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.roomlist-room-sub {
+  color: #6b7280;
+  font-size: 14px;
+  margin-top: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Empty */
+.roomlist-empty {
+  text-align: center;
+  color: #9ca3af;
+  margin-top: 40px;
+  font-size: 14px;
+}
+
+.roomlist-empty-link {
+  color: #4f46e5;
+  margin-top: 4px;
+  cursor: pointer;
+}
+
+/* Modal */
+.roomlist-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.roomlist-modal {
+  width: 100%;
+  max-width: 380px;
+  background: white;
+  padding: 24px;
+  border-radius: 20px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.2);
+}
+
+.roomlist-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.roomlist-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.roomlist-modal-close {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.roomlist-modal-search {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.roomlist-modal-error {
+  text-align: center;
+  color: #ef4444;
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+/* Search result */
+.roomlist-result-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.roomlist-result-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.roomlist-result-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+}
+
+.roomlist-result-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.roomlist-result-role {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.roomlist-result-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* Loading message */
+.roomlist-message {
+  padding: 40px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.roomlist-message-muted {
+  color: #9ca3af;
+}
+
+/* ==========================
+   Room List Screen
+========================== */
+.room-list-screen {
+  padding: 16px;
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.room-list-loading-message {
+  padding: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+/* Header */
+.room-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.room-list-title {
+  margin: 0;
+}
+
+.room-list-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-list-search-button {
+  background-color: #ffffff;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  padding: 6px;
+}
+
+.room-list-search-icon {
+  width: 20px;
+  height: 20px;
+  color: #4b5563;
+}
+
+.room-list-group-button {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 9999px;
+  border: 1px solid #fecdd3;
+  background-color: #fff1f2;
+  color: #db2777;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.room-list-broadcast-button {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 9999px;
+  border: 1px solid #c7d2fe;
+  background-color: #e0e7ff;
+  color: #4f46e5;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+/* List */
+.room-list-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Room row */
+.room-list-room-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.room-list-room-avatar {
+  flex-shrink: 0;
+}
+
+.room-list-room-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-list-room-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.room-list-room-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 70%;
+}
+
+.room-list-group-label {
+  font-size: 9px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background-color: #e5e7eb;
+  color: #4b5563;
+}
+
+.room-list-room-name-text {
+  font-weight: 700;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-list-room-time {
+  font-size: 10px;
+  color: #9ca3af;
+}
+
+.room-list-room-subtext {
+  font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Empty state */
+.room-list-empty {
+  margin-top: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+.room-list-empty-link {
+  margin-top: 8px;
+  color: #4f46e5;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Modal */
+.room-list-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+
+.room-list-modal {
+  background-color: #ffffff;
+  width: 100%;
+  max-width: 400px;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+}
+
+.room-list-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.room-list-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.room-list-modal-close {
+  border: none;
+  background: none;
+  font-size: 16px;
+  color: #9ca3af;
+  cursor: pointer;
+}
+
+.room-list-modal-search-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.room-list-modal-input {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.room-list-modal-search-button {
+  padding: 8px 16px;
+}
+
+.room-list-modal-message {
+  text-align: center;
+  font-size: 13px;
+  color: #ef4444;
+  margin-bottom: 12px;
+}
+
+/* 検索結果カード */
+.room-list-modal-result-card {
+  background-color: #f9fafb;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.room-list-modal-result-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.room-list-modal-result-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  object-fit: cover;
+}
+
+.room-list-modal-result-name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.room-list-modal-result-role {
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.room-list-modal-result-button {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+/* ==========================
+   Store Cast Management
+========================== */
+.cast-mgmt-screen {
+  padding: 16px;
+  position: relative;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.cast-mgmt-loading-message {
+  padding: 40px;
+  text-align: center;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+/* Header */
+.cast-mgmt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.cast-mgmt-title {
+  margin: 0;
+}
+
+.cast-mgmt-add-button {
+  font-size: 12px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* List */
+.cast-mgmt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Card */
+.cast-mgmt-card {
+  background-color: #ffffff;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.cast-mgmt-card:hover {
+  background-color: #f9fafb;
+}
+
+.cast-mgmt-card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cast-mgmt-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  object-fit: cover;
+}
+
+.cast-mgmt-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.cast-mgmt-id {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.cast-mgmt-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cast-mgmt-status-label {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.cast-mgmt-delete-button {
+  border: none;
+  background: none;
+  padding: 6px;
+  border-radius: 9999px;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.cast-mgmt-delete-button:hover {
+  color: #b91c1c;
+  background-color: #fef2f2;
+}
+
+.cast-mgmt-delete-icon {
+  width: 20px;
+  height: 20px;
+}
+
+/* Empty */
+.cast-mgmt-empty-message {
+  padding: 16px;
+  text-align: center;
+  font-size: 14px;
+  color: #9ca3af;
+}
+
+/* Modal */
+.cast-mgmt-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+
+.cast-mgmt-modal {
+  background-color: #ffffff;
+  border-radius: 16px;
+  padding: 24px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+}
+
+.cast-mgmt-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.cast-mgmt-modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cast-mgmt-modal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.cast-mgmt-modal-button {
+  flex: 1;
 }

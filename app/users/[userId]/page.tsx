@@ -1,10 +1,10 @@
 "use client";
 
-import { HomeScreen } from "@/components/screens/Screens";
+import { PublicProfileScreen } from "@/components/screens/Screens";
 import { useAuth } from "@/hooks/useAuth";
 import { useNav } from "@/hooks/useNav";
 
-export default function Page() {
+export default function Page({ params }: { params: { id: string } }) {
   const navigate = useNav();
   const { currentUser, loaded } = useAuth();
 
@@ -17,6 +17,11 @@ export default function Page() {
     return null;
   }
 
-  // ★ currentUser は Profile のみ（null ではない）
-  return <HomeScreen currentUser={currentUser} navigate={navigate} />;
+  return (
+    <PublicProfileScreen
+      currentUser={currentUser}
+      targetUserId={params.id}
+      navigate={navigate}
+    />
+  );
 }

@@ -1,34 +1,49 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    /* === 基本設定 === */
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    /* === Next.js 用 === */
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "incremental": true,
+    "isolatedModules": true,
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
-    "noEmit": true,
     "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "react-jsx",
-    "incremental": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    /* === デコレーター・クラスフィールド === */
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+
+    /* === パスエイリアス === */
+    "paths": {
+      "@/*": ["./*"]
+    },
+
+    /* === Next.js の型補完 === */
+    "types": ["node"],
     "plugins": [
       {
         "name": "next"
       }
-    ],
-    "paths": {
-      "@/*": ["./*"]
-    }
+    ]
   },
+
   "include": [
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
+    "**/*.mts",
     ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    ".next/dev/types/**/*.ts"
   ],
+
   "exclude": ["node_modules"]
 }

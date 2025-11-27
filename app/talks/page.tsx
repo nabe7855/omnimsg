@@ -1,6 +1,6 @@
 "use client";
 
-import { HomeScreen } from "@/components/screens/Screens";
+import { RoomListScreen } from "@/components/screens/Screens";
 import { useAuth } from "@/hooks/useAuth";
 import { useNav } from "@/hooks/useNav";
 
@@ -8,15 +8,14 @@ export default function Page() {
   const navigate = useNav();
   const { currentUser, loaded } = useAuth();
 
-  // ★ ローディング中は何も描画しない
+  // ★ ロード完了前は何も描画しない
   if (!loaded) return null;
 
-  // ★ 未ログインならログインページへ
+  // ★ 未ログインならログイン画面へ
   if (!currentUser) {
     navigate("/login");
     return null;
   }
 
-  // ★ currentUser は Profile のみ（null ではない）
-  return <HomeScreen currentUser={currentUser} navigate={navigate} />;
+  return <RoomListScreen currentUser={currentUser} navigate={navigate} />;
 }
