@@ -187,7 +187,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
           <div
             key={c.id}
             className="cast-mgmt-card"
-            onClick={() => safeNavigate(`/profile`)}
+            onClick={() => safeNavigate(`/users/${c.id}`)}
           >
             <div className="cast-mgmt-card-main">
               <img

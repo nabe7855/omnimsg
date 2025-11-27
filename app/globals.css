@@ -1118,6 +1118,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding-bottom: 240px;
 }
 
 /* アバター */
@@ -1230,11 +1231,26 @@ body {
   color: #374151;
 }
 
-/* フッター（ボタンエリア） */
+/* フッター（ボタンエリア）★ここを大幅修正 */
 .public-profile-footer {
-  padding: 24px;
+  position: fixed; /* 画面下に固定 */
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 16px 24px;
+  background-color: #ffffff;
   border-top: 1px solid #e5e7eb;
-  background-color: #f9fafb;
+
+  /* ナビゲーションバー(通常 z-index:100)より上に表示 */
+  z-index: 200;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+
+  /* iPhoneの下部バー対策 */
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
 }
 
 /* アクションボタン共通（横幅・アイコン位置など） */
@@ -1909,4 +1925,200 @@ body {
 
 .cast-mgmt-modal-button {
   flex: 1;
+}
+
+/* =========================================
+   Public Profile Screen Styles
+   ========================================= */
+.public-profile-screen {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: #fff;
+  position: relative;
+}
+
+.public-profile-message {
+  padding: 20px;
+  text-align: center;
+  color: #333;
+}
+.public-profile-message-muted {
+  color: #888;
+}
+
+/* Header */
+.public-profile-header {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid #eee;
+  background-color: #fff;
+}
+.public-profile-back-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+/* Main Content */
+.public-profile-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 24px 120px; /* フッター分の余白 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Avatar */
+.public-profile-avatar-wrapper {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 1px solid #f0f0f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 16px;
+}
+.public-profile-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Name */
+.public-profile-name {
+  font-size: 22px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 12px;
+}
+
+/* Badges */
+.public-profile-badge-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 32px;
+}
+
+.public-profile-role-badge {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: bold;
+  border-radius: 99px;
+  text-transform: uppercase;
+}
+.public-profile-role-cast {
+  background-color: #fce7f3;
+  color: #db2777;
+}
+.public-profile-role-store {
+  background-color: #e0e7ff;
+  color: #4338ca;
+}
+.public-profile-role-user {
+  background-color: #e0f2fe;
+  color: #0284c7;
+}
+
+.public-profile-store-badge {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: bold;
+  border-radius: 99px;
+  background-color: #f3f4f6;
+  color: #4b5563;
+  display: flex;
+  align-items: center;
+}
+
+/* Card List */
+.public-profile-card-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.public-profile-card {
+  width: 100%;
+  background-color: #f9fafb;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #f3f4f6;
+}
+.public-profile-card-label {
+  display: block;
+  font-size: 11px;
+  color: #9ca3af;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+.public-profile-card-text {
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+/* Footer Actions */
+.public-profile-footer {
+  position: fixed; /* 画面下に固定 */
+
+  /* ★修正ポイント: 下部メニューバー(高さ約60〜80px)と重ならないように上にずらす */
+  bottom: 80px;
+
+  left: 0;
+  width: 100%;
+  padding: 16px 24px;
+
+  /* 背景色は消して透明にするか、必要に応じて調整してください */
+  background: linear-gradient(
+    to top,
+    rgba(255, 255, 255, 1) 0%,
+    rgba(255, 255, 255, 0.8) 100%
+  );
+
+  /* ボーダーを消す（宙に浮いているデザインにする場合） */
+  border-top: none;
+
+  z-index: 200;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+
+  /* iPhoneの下部バー対策も含めるならもう少し余裕を持つ */
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+.public-profile-action-button {
+  width: 100%;
+  padding: 14px;
+  border-radius: 99px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: opacity 0.2s;
+}
+.public-profile-action-button:active {
+  opacity: 0.8;
+}
+
+.public-profile-action-button-secondary {
+  background-color: #fff;
+  border-color: #d1d5db;
+  color: #374151;
+}
+.public-profile-action-button-primary {
+  background-color: #4b5563;
+  color: #fff;
 }
