@@ -186,10 +186,32 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     return <div className="chat-loading">読み込み中...</div>;
   }
 
+  console.log("===== STORE CHAT CHECK =====");
+console.log("CurrentUser:", currentUser);
+console.log("CurrentUser.role:", currentUser?.role);
+
+console.log("CurrentRoom:", currentRoom);
+console.log("Room.type:", currentRoom?.type);
+
+console.log("Partner:", currentRoom?.partner);
+console.log("Partner.role:", currentRoom?.partner?.role);
+
+console.log("isStoreChat 判定:", {
+  cond1: currentRoom?.type === "dm",
+  cond2: currentRoom?.partner !== undefined,
+  cond3: currentUser?.role === UserRole.USER,
+  cond4: currentRoom?.partner?.role === UserRole.STORE,
+});
+
+
+  // ============================
+  // ★ 店舗チャット判定（安全版）
+  // ============================
   const isStoreChat =
-    currentRoom.type === "dm" &&
-    currentUser.role === UserRole.USER &&
-    currentRoom.partner?.role === UserRole.STORE;
+    currentRoom?.type === "dm" &&
+    currentRoom?.partner !== undefined &&
+    currentUser?.role === UserRole.USER &&
+    currentRoom.partner.role === UserRole.STORE;
 
   const headerTitle =
     currentRoom.type === "group"
