@@ -1,7 +1,7 @@
 /* ▼▼ タブ（footer の直上固定） ▼▼ */
 .tab-container {
   position: fixed;
-  bottom: 60px; /* ← フッターナビの高さ */
+  bottom: 60px; /* フッターナビの高さ */
   left: 0;
   width: 100%;
   z-index: 50;
@@ -32,23 +32,28 @@
 }
 
 /* ▼▼ リスト ▼▼ */
-
-/* FriendTabs.tsx の list の領域 */
 .tab-content {
-  padding-top: 0px; /* ← ほぼ上詰めにする */
-  padding-bottom: 300px; /* ← タブに隠れないための下余白は残す */
+  padding-top: 6px; /* ← 上に詰める（検索欄のすぐ下に来る） */
+  padding-bottom: 200px; /* ← タブ＋フッターに隠れないための余白 */
 }
-/* 1行ずつのアイテム */
+
+/* 各ユーザー行 */
 .friend-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: space-between; /* 右側にボタンを配置 */
   padding: 12px 16px;
   border-bottom: 1px solid #eee;
-  cursor: pointer;
 }
 
-/* 画像（巨大化を完全に防止） */
+/* 左側：画像＋名前 */
+.friend-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* アバター（巨大化防止） */
 .friend-item .avatar {
   width: 48px !important;
   height: 48px !important;
@@ -57,16 +62,16 @@
 }
 
 /* 名前とID */
-.friend-item .user-info {
+.user-info {
   display: flex;
   flex-direction: column;
 }
 
-.friend-item .user-info strong {
+.user-info strong {
   font-size: 15px;
 }
 
-.friend-item .user-info span {
+.user-info span {
   font-size: 12px;
   color: #777;
 }
@@ -76,4 +81,42 @@
   padding: 32px;
   text-align: center;
   color: #888;
+}
+
+/* ▼▼ 追加：申請取り下げ・承認・拒否ボタン ▼▼ */
+
+/* 単体ボタン（例：取り下げ） */
+.btn-cancel {
+  padding: 6px 12px;
+  background: #ccc;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* 承認 / 拒否の2つ並び */
+.pending-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-accept {
+  padding: 6px 12px;
+  background: #7c3aed;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-reject {
+  padding: 6px 12px;
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
 }

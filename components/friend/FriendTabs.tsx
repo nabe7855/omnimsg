@@ -13,7 +13,7 @@ type FriendStatus = "friends" | "requested" | "pending" | "blocked";
 
 export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
   const [tab, setTab] = useState<FriendStatus>("friends");
-  const [list, setList] = useState<Profile[]>([]);
+  const [list, setList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const profileSelect = `
@@ -37,7 +37,7 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
 
     let query;
 
-    /** 友だち（accepted：両方向） */
+    /** 友だち（accepted） */
     if (type === "friends") {
       query = supabase
         .from("friendships")
@@ -45,8 +45,8 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
           `
           id,
           status,
-          requester:profiles!friendships_requester_id_fkey (${profileSelect}),
-          addressee:profiles!friendships_addressee_id_fkey (${profileSelect})
+          requester:profiles!friendships_requester_id_fkey(${profileSelect}),
+          addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
         `
         )
         .eq("status", "accepted")
@@ -61,7 +61,7 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
           `
           id,
           status,
-          addressee:profiles!friendships_addressee_id_fkey (${profileSelect})
+          addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
         `
         )
         .eq("requester_id", user.id)
@@ -76,7 +76,7 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
           `
           id,
           status,
-          requester:profiles!friendships_requester_id_fkey (${profileSelect})
+          requester:profiles!friendships_requester_id_fkey(${profileSelect})
         `
         )
         .eq("addressee_id", user.id)
@@ -91,7 +91,7 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
           `
           id,
           status,
-          addressee:profiles!friendships_addressee_id_fkey (${profileSelect})
+          addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
         `
         )
         .eq("requester_id", user.id)
@@ -105,12 +105,30 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
       return;
     }
 
-    const mapped = data
-      .map((d: any) => d.addressee || d.requester || null)
-      .filter(Boolean);
-
-    setList(mapped);
+    setList(data);
     setLoading(false);
+  };
+
+  // ================================
+  // ★ 操作用関数（取り下げ / 承認 / 拒否）
+  // ================================
+
+  const cancelRequest = async (id: string) => {
+    await supabase.from("friendships").delete().eq("id", id);
+    loadList(tab);
+  };
+
+  const acceptRequest = async (id: string) => {
+    await supabase
+      .from("friendships")
+      .update({ status: "accepted" })
+      .eq("id", id);
+    loadList(tab);
+  };
+
+  const rejectRequest = async (id: string) => {
+    await supabase.from("friendships").delete().eq("id", id);
+    loadList(tab);
   };
 
   return (
@@ -140,18 +158,50 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
         ) : list.length === 0 ? (
           <div className="empty">データがありません</div>
         ) : (
-          list.map((p) => (
-            <div key={p.id} className="friend-item">
-              <img
-                src={p.avatar_url || "/placeholder-avatar.png"}
-                className="avatar"
-              />
-              <div className="user-info">
-                <strong>{p.name}</strong>
-                <span>ID: {p.display_id}</span>
+          list.map((item: any) => {
+            const profile = item.requester || item.addressee;
+            return (
+              <div key={profile.id} className="friend-item">
+                <img
+                  src={profile.avatar_url || "/placeholder-avatar.png"}
+                  className="avatar"
+                />
+                <div className="user-info">
+                  <strong>{profile.name}</strong>
+                  <span>ID: {profile.display_id}</span>
+                </div>
+
+                {/* ▼▼ タブごとにボタンを出し分け ▼▼ */}
+
+                {tab === "requested" && (
+                  <button
+                    className="btn-cancel"
+                    onClick={() => cancelRequest(item.id)}
+                  >
+                    取り下げ
+                  </button>
+                )}
+
+                {tab === "pending" && (
+                  <div className="pending-actions">
+                    <button
+                      className="btn-accept"
+                      onClick={() => acceptRequest(item.id)}
+                    >
+                      承認
+                    </button>
+
+                    <button
+                      className="btn-reject"
+                      onClick={() => rejectRequest(item.id)}
+                    >
+                      拒否
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>
