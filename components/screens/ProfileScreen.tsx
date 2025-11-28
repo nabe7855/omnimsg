@@ -1,101 +1,192 @@
+"use client";
+
+import { supabase } from "@/lib/supabaseClient";
 import { ProfileProps } from "@/lib/types/screen";
-import React from "react";
+import "@/styles/profile.css";
+import React, { useState } from "react";
 
 export const ProfileScreen: React.FC<ProfileProps> = ({
   currentUser,
   onLogout,
 }) => {
-  // =================================================
-  // ❶ currentUser がまだ無い → ローディング対応
-  // =================================================
-  if (!currentUser) {
-    return <div className="profile-loading">読み込み中...</div>;
-  }
+  if (!currentUser) return <div>読み込み中...</div>;
 
-  // =================================================
-  // ❷ avatar が存在しない・空文字・null・undefined の場合
-  //    → 必ず placeholder にフォールバックさせる
-  // =================================================
+  const [isEditing, setIsEditing] = useState(false);
+
+  const [form, setForm] = useState({
+    name: currentUser.name || "",
+    email: currentUser.email || "",
+    bio: currentUser.bio || "",
+    business_hours: currentUser.business_hours || "",
+    address: currentUser.address || "",
+    phone_number: currentUser.phone_number || "",
+    website_url: currentUser.website_url || "",
+  });
+
+  const updateField = (key: string, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = async () => {
+    const { error } = await supabase
+      .from("profiles")
+      .update(form)
+      .eq("id", currentUser.id);
+
+    if (error) {
+      alert("保存中にエラーが発生しました");
+      console.error(error);
+      return;
+    }
+
+    Object.assign(currentUser, form);
+    setIsEditing(false);
+  };
+
   const avatarSrc = currentUser.avatar_url?.trim()
     ? currentUser.avatar_url
-    : "/placeholder-avatar.png"; // public/ に置く
+    : "/placeholder-avatar.png";
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(currentUser.display_id);
-    alert("IDをコピーしました");
-  };
-
-  const handleLogoutClick = async () => {
-    await onLogout();
-  };
+  const displayRole = currentUser.role?.toUpperCase() || "USER";
 
   return (
     <div className="profile-screen">
       <h2 className="profile-heading">マイページ</h2>
-
-      <div className="profile-content">
-        {/* Avatar */}
+      {/* ====== Hero（背景 ＋ アバター） ====== */}
+      <div className="profile-hero-bg">
         <div className="profile-avatar-wrapper">
-          <img
-            src={avatarSrc}
-            alt="avatar"
-            className="profile-avatar-image"
-            onError={(e) => {
-              // 万が一画像URLが不正でも fallback
-              (e.currentTarget as HTMLImageElement).src =
-                "/placeholder-avatar.png";
-            }}
-          />
+          <img src={avatarSrc} className="profile-avatar-image" />
         </div>
-
-        {/* Name */}
-        <h3 className="profile-name">{currentUser.name}</h3>
-
-        {/* Role */}
-        <span className="profile-role-badge">{currentUser.role}</span>
-
-        {/* Info Cards */}
-        <div className="profile-cards">
-          {/* Display ID */}
-          <div className="profile-card profile-card-id">
-            <div className="profile-card-left">
-              <label className="profile-card-label">ID</label>
-              <div className="profile-id-value">{currentUser.display_id}</div>
-            </div>
-
-            <button
-              className="profile-copy-button"
-              onClick={handleCopy}
-              type="button"
-            >
-              コピー
-            </button>
-          </div>
-
-          {/* Email */}
-          <div className="profile-card">
-            <label className="profile-card-label">メールアドレス</label>
-            <div className="profile-email">{currentUser.email || "未設定"}</div>
-          </div>
-
-          {/* Bio */}
-          <div className="profile-card">
-            <label className="profile-card-label">自己紹介</label>
-            <div className="profile-bio">
-              {currentUser.bio || "自己紹介は設定されていません。"}
-            </div>
-          </div>
-        </div>
-
-        {/* Logout */}
-        <button
-          onClick={handleLogoutClick}
-          className="profile-logout-button"
-          type="button"
-        >
-          ログアウト
-        </button>
       </div>
+      {/* ====== 名前 ＆ ロールバッジ ====== */}
+
+      <div className="profile-info-center">
+        <h3 className="profile-name">{currentUser.name}</h3>
+        <span className="profile-role-badge">{displayRole}</span>
+      </div>
+      {/* ====== 閲覧モード ====== */}
+      {!isEditing && (
+        <>
+          <div className="profile-cards">
+            <div className="profile-card profile-card-id">
+              <div>
+                <label>ID</label>
+                <div>{currentUser.display_id}</div>
+              </div>
+            </div>
+
+            <div className="profile-card">
+              <label>メールアドレス</label>
+              <div>{currentUser.email || "未設定"}</div>
+            </div>
+
+            <div className="profile-card">
+              <label>自己紹介</label>
+              <div>{currentUser.bio || "未設定"}</div>
+            </div>
+
+            {currentUser.role === "store" && (
+              <>
+                <div className="profile-card">
+                  <label>営業時間</label>
+                  <div>{currentUser.business_hours || "未設定"}</div>
+                </div>
+
+                <div className="profile-card">
+                  <label>住所</label>
+                  <div>{currentUser.address || "未設定"}</div>
+                </div>
+
+                <div className="profile-card">
+                  <label>電話番号</label>
+                  <div>{currentUser.phone_number || "未設定"}</div>
+                </div>
+
+                <div className="profile-card">
+                  <label>ホームページURL</label>
+                  <div>{currentUser.website_url || "未設定"}</div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <button
+            className="profile-edit-button"
+            onClick={() => setIsEditing(true)}
+          >
+            編集する
+          </button>
+
+          <button className="profile-logout-button" onClick={onLogout}>
+            ログアウト
+          </button>
+        </>
+      )}
+      {/* ====== 編集モード ====== */}
+      {isEditing && (
+        <>
+          <div className="edit-form">
+            <label>名前</label>
+            <input
+              value={form.name}
+              onChange={(e) => updateField("name", e.target.value)}
+            />
+
+            <label>メールアドレス</label>
+            <input
+              value={form.email}
+              onChange={(e) => updateField("email", e.target.value)}
+            />
+
+            <label>自己紹介</label>
+            <textarea
+              value={form.bio}
+              onChange={(e) => updateField("bio", e.target.value)}
+            />
+
+            {currentUser.role === "store" && (
+              <>
+                <label>営業時間</label>
+                <input
+                  value={form.business_hours}
+                  onChange={(e) =>
+                    updateField("business_hours", e.target.value)
+                  }
+                />
+
+                <label>住所</label>
+                <input
+                  value={form.address}
+                  onChange={(e) => updateField("address", e.target.value)}
+                />
+
+                <label>電話番号</label>
+                <input
+                  value={form.phone_number}
+                  onChange={(e) => updateField("phone_number", e.target.value)}
+                />
+
+                <label>ホームページURL</label>
+                <input
+                  value={form.website_url}
+                  onChange={(e) => updateField("website_url", e.target.value)}
+                />
+              </>
+            )}
+          </div>
+
+          <button className="profile-save-button" onClick={handleSave}>
+            保存する
+          </button>
+
+          <button
+            className="profile-cancel-button"
+            onClick={() => setIsEditing(false)}
+          >
+            キャンセル
+          </button>
+        </>
+      )}
     </div>
   );
 };

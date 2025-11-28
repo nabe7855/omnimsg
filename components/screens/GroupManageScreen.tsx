@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { db } from "@/lib/mockSupabase";
 import { Profile } from "@/lib/types";
 import { GroupManageProps } from "@/lib/types/screen";
+import { safeAvatar } from "@/lib/utils/avatar"; // ★ 追加！
 
 export const GroupManageScreen: React.FC<GroupManageProps> = ({
   currentUser,
@@ -73,7 +74,7 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
     if (!groupName.trim()) return alert("グループ名を入力してください");
     if (selectedIds.size === 0) return alert("メンバーを選択してください");
 
-    // ストア自身は自動追加
+    // ストア自身を自動追加
     const members = [...selectedIds, currentUser.id];
 
     if (isEdit && roomId) {
@@ -133,11 +134,7 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
           {isEdit ? "グループ編集" : "グループ作成"}
         </h2>
 
-        <button
-          onClick={handleSave}
-          className="group-save-button"
-          type="button"
-        >
+        <button onClick={handleSave} className="group-save-button" type="button">
           {isEdit ? "完了" : "作成"}
         </button>
       </div>
@@ -173,7 +170,7 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
                 >
                   <div className="group-member-main">
                     <img
-                      src={cast.avatar_url}
+                      src={safeAvatar(cast.avatar_url)}
                       className="avatar group-member-avatar"
                     />
                     <div>
@@ -210,9 +207,7 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
           <h3 className="group-section-title">ユーザー</h3>
 
           {customers.length === 0 ? (
-            <div className="group-empty-text">
-              選択可能なユーザーがいません
-            </div>
+            <div className="group-empty-text">選択可能なユーザーがいません</div>
           ) : (
             <div className="group-member-list">
               {customers.map((user) => (
@@ -228,7 +223,7 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
                 >
                   <div className="group-member-main">
                     <img
-                      src={user.avatar_url}
+                      src={safeAvatar(user.avatar_url)}
                       className="avatar group-member-avatar"
                     />
                     <div>

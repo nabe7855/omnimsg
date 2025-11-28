@@ -1,0 +1,161 @@
+/* ===============================
+   Profile Screen Global Styles
+=============================== */
+
+.profile-screen {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 20px;
+  box-sizing: border-box;
+  font-family: sans-serif;
+}
+
+/* ヘッダー */
+.profile-heading {
+  font-size: 26px;
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+/* ======= Hero（アイコン背景） ======= */
+.profile-hero-bg {
+  width: 100%;
+  height: 130px;
+  background: #e5e7eb;
+  border-radius: 80px;
+  position: relative;
+  margin: 0 auto;
+  margin-top: 20px;
+  margin-bottom: 60px; /* 名前とぶつからないように余白 */
+}
+
+/* アバター（中央に配置して切れない） */
+.profile-avatar-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.profile-avatar-image {
+  width: 130px;
+  height: 130px;
+  border-radius: 9999px;
+  object-fit: cover;
+  border: 4px solid white;
+  background: white;
+}
+
+/* 名前 & ロール */
+.profile-info-center {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.profile-name {
+  font-size: 22px;
+  font-weight: bold;
+  margin-bottom: 6px;
+}
+
+/* ロールバッジ */
+.profile-role-badge {
+  display: inline-block;
+  padding: 6px 14px;
+  background: #eee;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #555;
+  font-weight: 600;
+}
+
+/* ======= カードレイアウト ======= */
+.profile-cards {
+  display: grid;
+  gap: 14px;
+}
+
+.profile-card {
+  background: white;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+}
+
+.profile-card label {
+  font-size: 13px;
+  color: #666;
+}
+
+/* IDカードは横並び */
+.profile-card-id {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.profile-copy-button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #777;
+  background: #fff;
+  cursor: pointer;
+}
+
+/* ======= 編集フォーム ======= */
+.edit-form {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.edit-form label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.edit-form input,
+.edit-form textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  font-size: 15px;
+  box-sizing: border-box;
+}
+
+.edit-form textarea {
+  resize: vertical;
+}
+
+/* ======= ボタン共通 ======= */
+.profile-save-button,
+.profile-edit-button,
+.profile-logout-button,
+.profile-cancel-button {
+  width: 100%;
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  font-size: 16px;
+  cursor: pointer;
+  border: none;
+}
+
+/* ボタン色分け */
+.profile-edit-button,
+.profile-save-button {
+  background: #4f46e5;
+  color: white;
+}
+
+.profile-cancel-button {
+  background: #ddd;
+  color: #333;
+}
+
+.profile-logout-button {
+  background: #f87171;
+  color: white;
+}

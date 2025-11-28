@@ -1,8 +1,5 @@
 /**
  * ユーザーの役割（ロール）
- * - USER: 一般ユーザー
- * - CAST: キャスト
- * - STORE: 店舗アカウント
  */
 export enum UserRole {
   USER = "user",
@@ -12,32 +9,35 @@ export enum UserRole {
 
 /**
  * Profile（プロファイル）データ
- * Supabaseの `profiles` テーブルに対応
- *
- * ・ユーザー、キャスト、店舗すべてがこの形を使う
- * ・role によって利用するプロパティが変わる（例: business_hours は STORE 用）
+ * Supabaseの `profiles` テーブルに完全対応
  */
 export interface Profile {
   id: string;
   role: UserRole;
-  display_id: string; // 検索用のユニークID
+  display_id: string;
   name: string;
-  avatar_url: string;
+  avatar_url: string | null;
 
   // オプション項目
-  email?: string;
-  password?: string;
-  bio?: string;
+  email?: string | null;
+  password?: string | null;
+  bio?: string | null;
 
-  // CAST 用：どの店舗に所属しているか
+  // CAST 用
   store_id?: string | null;
 
-  // USER 用：誕生日など
-  birthday?: string;
+  // USER 用
+  birthday?: string | null;
 
-  // STORE 用：営業時間
-  business_hours?: string;
+  // STORE 用
+  business_hours?: string | null;
+  address?: string | null;        // ← NEW
+  phone_number?: string | null;   // ← NEW
+  website_url?: string | null;    // ← NEW
 
-  // ブロック管理（システム用）
+  // ブロック管理
   is_blocked?: boolean;
+
+  // Supabase の timestamp
+  created_at?: string;
 }
