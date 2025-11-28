@@ -1,0 +1,58 @@
+/* 全体のリスト配置 */
+.outgoing-list {
+  padding: 12px;
+  padding-bottom: 120px; /* タブ & フッターと重ならないように余白 */
+}
+
+/* 読み込み & 空データ表示 */
+.outgoing-loading,
+.outgoing-empty {
+  text-align: center;
+  color: #555;
+  padding: 20px 0;
+  font-size: 14px;
+}
+
+/* 各ユーザーカード */
+.user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  background: #ffffff;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+
+  padding: 12px;
+  margin-bottom: 12px;
+
+  width: 100%;
+  max-width: 480px;
+  margin-left: auto;
+  margin-right: auto;
+
+  transition: background 0.2s ease;
+}
+
+.user-card:hover {
+  background: #fafafa;
+}
+
+/* アイコン */
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+/* テキスト */
+.user-info .name {
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.user-info .display-id {
+  font-size: 12px;
+  color: #777;
+}

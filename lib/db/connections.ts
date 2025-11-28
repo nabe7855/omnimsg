@@ -2,81 +2,21 @@
 
 import { supabase } from "@/lib/supabaseClient";
 
-// ==============================
-// 型
-// ==============================
-export interface InsertConnection {
-  user_id: string;
-  target_id: string;
-}
-
+/* ==============================
+   型
+============================== */
 export interface ConnectionRecord {
   id: string;
   user_id: string;
   target_id: string;
+  status: "requested" | "pending" | "accepted" | "blocked";
   created_at: string;
 }
 
-// ==============================
-// 1. つながりを作成する（友達申請なしの即時承認型）
-// ==============================
-export const addConnection = async (targetId: string) => {
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
-
-  if (authError || !user) {
-    console.error("❌ addConnection: ログイン情報取得失敗", authError);
-    return { error: "ログインしていません" };
-  }
-
-  const { data, error } = await supabase
-    .from("connections")
-    .insert([
-      {
-        user_id: user.id,
-        target_id: targetId,
-      },
-    ])
-    .select()
-    .single();
-
-  if (error) {
-    console.error("❌ addConnection エラー:", error);
-    return { error };
-  }
-
-  return { data };
-};
-
-// ==============================
-// 2. つながりを削除
-// ==============================
-export const removeConnection = async (targetId: string) => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return { error: "ログインしていません" };
-
-  const { error } = await supabase
-    .from("connections")
-    .delete()
-    .match({ user_id: user.id, target_id: targetId });
-
-  if (error) {
-    console.error("❌ removeConnection エラー:", error);
-    return { error };
-  }
-
-  return { success: true };
-};
-
-// ==============================
-// 3. 自分がつながっているユーザー一覧
-// ==============================
-export const getMyConnections = async (): Promise<ConnectionRecord[]> => {
+/* ==============================
+   共通: statusで取得
+============================== */
+const fetchConnectionsByStatus = async (status: string) => {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -87,63 +27,181 @@ export const getMyConnections = async (): Promise<ConnectionRecord[]> => {
     .from("connections")
     .select("*")
     .eq("user_id", user.id)
+    .eq("status", status)
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("❌ getMyConnections エラー:", error);
+    console.error("❌ fetchConnectionsByStatus エラー:", error);
     return [];
   }
 
   return data as ConnectionRecord[];
 };
 
-// ==============================
-// 4. 「このターゲットとつながっているか」チェック
-// ==============================
-export const isConnectedWith = async (targetId: string): Promise<boolean> => {
+/* ==============================
+   リスト取得
+============================== */
+export const getFriends = () => fetchConnectionsByStatus("accepted");           // 友達
+export const getOutgoingRequests = () => fetchConnectionsByStatus("requested"); // 申請してる
+export const getIncomingRequests = () => fetchConnectionsByStatus("pending");   // 申請されてる
+export const getBlockedUsers = () => fetchConnectionsByStatus("blocked");       // ブロック中
+
+/* ==============================
+   1. 友達申請を送る（requested で作成）
+============================== */
+export const sendFriendRequest = async (targetId: string) => {
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) return { error: "ログインしていません" };
+
+  const { data, error } = await supabase
+    .from("connections")
+    .insert([
+      {
+        user_id: user.id,
+        target_id: targetId,
+        status: "requested", // 自分が送った申請
+      },
+    ])
+    .select()
+    .single();
+
+  if (error) {
+    console.error("❌ sendFriendRequest エラー:", error);
+    return { error };
+  }
+
+  return { data };
+};
+
+/* ==============================
+   2. 申請を承認（pending → accepted）
+============================== */
+export const acceptFriendRequest = async (fromUserId: string) => {
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return false;
+  if (!user) return { error: "ログインしていません" };
+
+  /**  
+   * 申請レコード（相手 → 自分）を accepted に更新
+   */
+  const { error } = await supabase
+    .from("connections")
+    .update({ status: "accepted" })
+    .match({
+      user_id: fromUserId,
+      target_id: user.id,
+      status: "pending",
+    });
+
+  if (error) {
+    console.error("❌ acceptFriendRequest エラー:", error);
+    return { error };
+  }
+
+  /**  
+   * 自分側のレコードも accepted に作成（なければ）
+   */
+  await supabase
+    .from("connections")
+    .upsert({
+      user_id: user.id,
+      target_id: fromUserId,
+      status: "accepted",
+    });
+
+  return { success: true };
+};
+
+/* ==============================
+   3. 申請を拒否（削除）
+============================== */
+export const denyFriendRequest = async (fromUserId: string) => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインしていません" };
+
+  const { error } = await supabase
+    .from("connections")
+    .delete()
+    .match({
+      user_id: fromUserId,
+      target_id: user.id,
+      status: "pending",
+    });
+
+  if (error) {
+    console.error("❌ denyFriendRequest エラー:", error);
+    return { error };
+  }
+
+  return { success: true };
+};
+
+/* ==============================
+   4. ブロック（常に一方方向）
+============================== */
+export const blockUser = async (targetId: string) => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { error: "ログインしていません" };
+
+  // 自分 → 相手 のレコードを blocked に変更
+  const { error } = await supabase
+    .from("connections")
+    .upsert({
+      user_id: user.id,
+      target_id: targetId,
+      status: "blocked",
+    });
+
+  if (error) {
+    console.error("❌ blockUser エラー:", error);
+    return { error };
+  }
+
+  return { success: true };
+};
+
+/* ==============================
+   5. つながっている？（任意の状態）
+============================== */
+export const getConnectionStatus = async (
+  targetId: string
+): Promise<ConnectionRecord | null> => {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
 
   const { data, error } = await supabase
     .from("connections")
-    .select("id")
+    .select("*")
     .match({ user_id: user.id, target_id: targetId })
     .maybeSingle();
 
   if (error) {
-    console.error("❌ isConnectedWith エラー:", error);
-    return false;
+    console.error("❌ getConnectionStatus エラー:", error);
+    return null;
   }
 
-  return !!data;
+  return data as ConnectionRecord | null;
 };
 
-// ==============================
-// 5. 相互フォロー（お互いに登録）しているか？
-// ==============================
-export const isMutualConnection = async (
-  targetId: string
-): Promise<boolean> => {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return false;
-
-  const { data, error } = await supabase
-    .from("connections")
-    .select("id")
-    .or(
-      `and(user_id.eq.${user.id},target_id.eq.${targetId}),and(user_id.eq.${targetId},target_id.eq.${user.id})`
-    );
-
-  if (error) {
-    console.error("❌ isMutualConnection エラー:", error);
-    return false;
-  }
-
-  return data.length === 2; // 双方向で2レコードある
+/* ==============================
+   6. 友達（accepted）か？
+============================== */
+export const isFriend = async (targetId: string): Promise<boolean> => {
+  const record = await getConnectionStatus(targetId);
+  return record?.status === "accepted";
 };

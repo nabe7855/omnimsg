@@ -4,8 +4,8 @@ import { supabase } from "@/lib/supabaseClient";
 import { Profile, UserRole } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
 import React, { useEffect, useState } from "react";
+import { FriendTabs } from "@/components/friend/FriendTabs";
 
-// 画像がない場合のフォールバック
 const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
 
 export const HomeScreen: React.FC<ScreenProps> = ({
@@ -15,56 +15,44 @@ export const HomeScreen: React.FC<ScreenProps> = ({
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false); // 検索を実行したかどうかのフラグ
+  const [hasSearched, setHasSearched] = useState(false);
 
-  // ============================
-  // 認証チェック
-  // ============================
+  // 未ログインチェック
   useEffect(() => {
-    if (!currentUser) {
-      navigate("/login");
-    }
+    if (!currentUser) navigate("/login");
   }, [currentUser, navigate]);
 
-  // ============================
-  // 検索実行関数（ボタンクリック時に発火）
-  // ============================
+  // 🔍 検索
   const handleSearch = async () => {
     if (!searchText.trim()) return;
 
     setLoading(true);
-    setHasSearched(true); // 検索実行済みにする
+    setHasSearched(true);
 
     try {
-      // IDの完全一致で検索
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
         .neq("id", currentUser?.id)
-        .eq("display_id", searchText.trim()); // ここで完全一致検索
+        .eq("display_id", searchText.trim());
 
       if (error) throw error;
+
       setProfiles((data as Profile[]) || []);
     } catch (e) {
-      console.error("Search error:", e);
+      console.error(e);
       alert("検索中にエラーが発生しました");
     } finally {
       setLoading(false);
     }
   };
 
-  // Enterキーでも検索できるようにする
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleSearch();
-    }
+    if (e.key === "Enter") handleSearch();
   };
 
-  // ============================
-  // プロフィール詳細へ遷移
-  // ============================
-  const handleUserClick = (targetUser: Profile) => {
-    navigate(`/users/${targetUser.id}`);
+  const handleUserClick = (user: Profile) => {
+    navigate(`/users/${user.id}`);
   };
 
   const getRoleLabel = (role: string) => {
@@ -76,10 +64,20 @@ export const HomeScreen: React.FC<ScreenProps> = ({
   if (!currentUser) return null;
 
   return (
-    <div className="home-screen">
+    <div
+      className="home-screen"
+      style={{
+        background: "#fff",      // ← 背景リセット（巨大アイコンを消す）
+        minHeight: "100vh",
+        paddingBottom: "140px",  // ← 固定FriendTabs + 下ナビ分の余白
+        overflowY: "auto",       // ← スクロール可能
+        position: "relative",
+      }}
+    >
+      {/* タイトル */}
       <h2 className="home-title">探す</h2>
 
-      {/* 検索ボックスとボタンのレイアウト */}
+      {/* 🔍 検索ボックス */}
       <div className="home-search-box" style={{ display: "flex", gap: "8px" }}>
         <input
           type="text"
@@ -88,8 +86,9 @@ export const HomeScreen: React.FC<ScreenProps> = ({
           onKeyDown={handleKeyDown}
           placeholder="IDを入力..."
           className="home-search-input"
-          style={{ flex: 1 }} // 入力欄を可能な限り広げる
+          style={{ flex: 1 }}
         />
+
         <button
           onClick={handleSearch}
           disabled={loading || !searchText.trim()}
@@ -104,7 +103,6 @@ export const HomeScreen: React.FC<ScreenProps> = ({
           }}
           aria-label="検索"
         >
-          {/* 虫眼鏡アイコン (SVG) */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="24"
@@ -115,7 +113,6 @@ export const HomeScreen: React.FC<ScreenProps> = ({
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="text-gray-600"
           >
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -123,21 +120,19 @@ export const HomeScreen: React.FC<ScreenProps> = ({
         </button>
       </div>
 
+      {/* 🔍 検索結果 */}
       <div className="home-list">
         {loading ? (
           <div className="p-4 text-center text-gray-400">検索中...</div>
         ) : !hasSearched ? (
-          // まだ検索ボタンを押していない場合
           <div className="p-4 text-center text-gray-400">
             IDを入力して検索ボタンを押してください
           </div>
         ) : profiles.length === 0 ? (
-          // 検索したが結果が0件の場合
           <div className="p-4 text-center text-gray-400">
             該当するユーザーが見つかりません
           </div>
         ) : (
-          // 検索結果がある場合
           profiles.map((p) => (
             <div
               key={p.id}
@@ -168,6 +163,11 @@ export const HomeScreen: React.FC<ScreenProps> = ({
             </div>
           ))
         )}
+      </div>
+
+      {/* 🔥 友だちタブ（固定配置） */}
+      <div style={{ marginTop: "32px" }}>
+        <FriendTabs currentUser={currentUser} />
       </div>
     </div>
   );

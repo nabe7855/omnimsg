@@ -3,20 +3,25 @@
 import { HomeScreen } from "@/components/screens/Screens";
 import { useAuth } from "@/hooks/useAuth";
 import { useNav } from "@/hooks/useNav";
+import { useEffect } from "react";
 
-export default function Page() {
+export default function HomePage() {
   const navigate = useNav();
   const { currentUser, loaded } = useAuth();
 
-  // ★ ローディング中は何も描画しない
+  // 🚨 Hooks の後で判定するようにする
+  useEffect(() => {
+    if (loaded && !currentUser) {
+      navigate("/login");
+    }
+  }, [loaded, currentUser, navigate]);
+
+  // ローディング中
   if (!loaded) return null;
 
-  // ★ 未ログインならログインページへ
-  if (!currentUser) {
-    navigate("/login");
-    return null;
-  }
+  // 未ログイン → リダイレクト待ち
+  if (!currentUser) return null;
 
-  // ★ currentUser は Profile のみ（null ではない）
+  // ログイン済 → ホーム画面
   return <HomeScreen currentUser={currentUser} navigate={navigate} />;
 }
