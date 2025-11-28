@@ -3,9 +3,8 @@
 import { supabase } from "@/lib/supabaseClient";
 import { Profile, RoomWithPartner } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
-import React, { useEffect, useState } from "react";
 import "@/styles/RoomList.css";
-
+import React, { useEffect, useState } from "react";
 
 const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
 
@@ -17,10 +16,11 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
 }) => {
   const [rooms, setRooms] = useState<RoomWithPartner[]>([]);
   const [friendIds, setFriendIds] = useState<string[]>([]);
+  const [unreadMap, setUnreadMap] = useState<Map<string, number>>(new Map());
   const [tab, setTab] = useState<RoomTab>("friends");
   const [loading, setLoading] = useState(true);
 
-  /** ▼ 友達ID一覧取得 */
+  /* ▼ 友達ID一覧取得 */
   useEffect(() => {
     const fetchFriendIds = async () => {
       if (!currentUser) return;
@@ -35,9 +35,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
 
       if (data) {
         const ids = data.map((f) =>
-          f.requester_id === currentUser.id
-            ? f.addressee_id
-            : f.requester_id
+          f.requester_id === currentUser.id ? f.addressee_id : f.requester_id
         );
         setFriendIds(ids);
       }
@@ -45,7 +43,32 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
     fetchFriendIds();
   }, [currentUser]);
 
-  /** ▼ ルーム取得 */
+  /* ▼ 未読件数の取得 */
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      if (!currentUser) return;
+
+      const { data, error } = await supabase.rpc("get_unread_count", {
+        p_user_id: currentUser.id,
+      });
+
+      if (error) {
+        console.error("Unread RPC Error:", error);
+        return;
+      }
+
+      const map = new Map<string, number>();
+      data?.forEach((row: { room_id: string; unread_count: number }) => {
+        map.set(row.room_id, row.unread_count);
+      });
+
+      setUnreadMap(map);
+    };
+
+    fetchUnreadCount();
+  }, [currentUser]);
+
+  /* ▼ ルーム取得 */
   useEffect(() => {
     const fetchRooms = async () => {
       if (!currentUser) return;
@@ -84,6 +107,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
             const partnerObj = participants.find(
               (p) => p.user_id !== currentUser.id
             );
+
             if (partnerObj) {
               const { data: pData } = await supabase
                 .from("profiles")
@@ -106,7 +130,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
     fetchRooms();
   }, [currentUser]);
 
-  /** ▼ タブでフィルタリング */
+  /* ▼ タブフィルタリング */
   const filteredRooms =
     tab === "friends"
       ? rooms.filter(
@@ -120,7 +144,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
 
   return (
     <div className="room-list-wrapper">
-      {/* ▼▼ タブ部分（フッターの直上固定） ▼▼ */}
+      {/* ▼ タブ */}
       <div className="room-tab-container">
         <button
           className={`room-tab ${tab === "friends" ? "active" : ""}`}
@@ -136,17 +160,15 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
         </button>
       </div>
 
-      {/* ▼▼ コンテンツ（リスト） ▼▼ */}
+      {/* ▼ ルーム一覧 */}
       <div className="room-list-content">
         {filteredRooms.length === 0 ? (
           <div className="room-list-empty">データがありません</div>
         ) : (
           filteredRooms.map((room) => {
-            const title =
-              room.partner?.name ?? "退会済みユーザー";
-
-            const avatarUrl =
-              room.partner?.avatar_url || PLACEHOLDER_AVATAR;
+            const title = room.partner?.name ?? "退会済みユーザー";
+            const avatarUrl = room.partner?.avatar_url || PLACEHOLDER_AVATAR;
+            const unread = unreadMap.get(room.id) ?? 0;
 
             const dateStr = new Date(room.updated_at).toLocaleTimeString([], {
               hour: "2-digit",
@@ -159,16 +181,19 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
                 className="room-list-item"
                 onClick={() => navigate(`/talk/${room.id}`)}
               >
-                <img src={avatarUrl} className="room-item-avatar" />
+                <div className="avatar-wrapper">
+                  <img src={avatarUrl} className="room-item-avatar" />
+
+                  {/* ▼ 未読バッジ */}
+                  {unread > 0 && <span className="unread-badge">{unread}</span>}
+                </div>
 
                 <div className="room-item-info">
                   <div className="room-item-header">
                     <strong>{title}</strong>
                     <span className="room-item-date">{dateStr}</span>
                   </div>
-                  <p className="room-item-message">
-                    メッセージを確認する &gt;
-                  </p>
+                  <p className="room-item-message">メッセージを確認する &gt;</p>
                 </div>
               </div>
             );

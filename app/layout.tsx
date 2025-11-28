@@ -62,6 +62,7 @@ export default function RootLayout({
 
     if (role === "store") {
       return [
+        { id: "/home", label: "ホーム", icon: "🏠" },
         { id: "/store/casts", label: "キャスト", icon: "👥" },
         { id: "/talks", label: "トーク", icon: "💬" },
         { id: "/store/menu", label: "メニュー", icon: "📋" },

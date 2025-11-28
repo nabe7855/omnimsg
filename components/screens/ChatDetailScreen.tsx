@@ -12,7 +12,6 @@ import {
 import { ChatDetailProps } from "@/lib/types/screen";
 import React, { useEffect, useRef, useState } from "react";
 
-// 画像のフォールバック用
 const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
 
 export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
@@ -26,22 +25,19 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // ============================
-  // 認証チェック
+  // ログインチェック
   // ============================
   useEffect(() => {
-    if (!currentUser) {
-      navigate("/login");
-    }
+    if (!currentUser) navigate("/login");
   }, [currentUser, navigate]);
 
   // ============================
-  // ルーム情報の読み込み
+  // ルーム情報読み込み
   // ============================
   useEffect(() => {
-    const fetchRoomInfo = async () => {
+    const loadRoom = async () => {
       if (!currentUser) return;
 
-      // 1. ルーム情報を取得
       const { data: room, error } = await supabase
         .from("rooms")
         .select("*")
@@ -49,12 +45,12 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         .single();
 
       if (error || !room) {
-        alert("チャットルームが見つかりません");
+        alert("チャットルームが存在しません");
         navigate("/talks");
         return;
       }
 
-      // 2. 参加者情報を取得して相手を特定
+      // 参加者情報の取得
       const { data: participants } = await supabase
         .from("room_participants")
         .select("user_id")
@@ -63,16 +59,16 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       let partner: Profile | undefined = undefined;
 
       if (room.type === "dm" && participants) {
-        const partnerIdObj = participants.find(
-          (p) => p.user_id !== currentUser.id
-        );
-        if (partnerIdObj) {
+        const partnerObj = participants.find((p) => p.user_id !== currentUser.id);
+
+        if (partnerObj) {
           const { data: pData } = await supabase
             .from("profiles")
             .select("*")
-            .eq("id", partnerIdObj.user_id)
+            .eq("id", partnerObj.user_id)
             .single();
-          if (pData) partner = pData as Profile;
+
+          if (pData) partner = pData;
         }
       }
 
@@ -85,28 +81,26 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       });
     };
 
-    fetchRoomInfo();
+    loadRoom();
   }, [roomId, currentUser, navigate]);
 
   // ============================
-  // メッセージ読み込み + リアルタイム監視
+  // メッセージ読み込み + Realtime
   // ============================
   useEffect(() => {
-    const fetchMessages = async () => {
-      const { data, error } = await supabase
+    const loadMessages = async () => {
+      const { data } = await supabase
         .from("messages")
         .select("*")
         .eq("room_id", roomId)
         .order("created_at", { ascending: true });
 
-      if (!error && data) {
-        setMessages(data as Message[]);
-      }
+      if (data) setMessages(data);
     };
 
-    fetchMessages();
+    loadMessages();
 
-    // リアルタイム更新の設定
+    // Realtime チャンネル
     const channel = supabase
       .channel(`room:${roomId}`)
       .on(
@@ -118,8 +112,8 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          const newMessage = payload.new as Message;
-          setMessages((prev) => [...prev, newMessage]);
+          const newMsg = payload.new as Message;
+          setMessages((prev) => [...prev, newMsg]);
         }
       )
       .subscribe();
@@ -137,14 +131,46 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [messages]);
 
   // ============================
+  // ★ 既読処理（入室 & 新着）
+  // ============================
+  useEffect(() => {
+    if (!currentUser || messages.length === 0) return;
+
+    const markAsRead = async () => {
+      try {
+        // 未読 = 自分以外が送ったメッセージ
+        const unread = messages.filter(
+          (m) => m.sender_id !== currentUser.id
+        );
+
+        if (unread.length === 0) return;
+
+        const rows = unread.map((m) => ({
+          message_id: m.id,
+          user_id: currentUser.id,
+        }));
+
+        // ★★ 409 Conflict 防止（unique 必須）
+        await supabase.from("message_reads").upsert(rows, {
+          onConflict: "message_id,user_id",
+          ignoreDuplicates: true,
+        });
+      } catch (e) {
+        console.error("既読処理エラー:", e);
+      }
+    };
+
+    markAsRead();
+  }, [messages, currentUser]);
+
+  // ============================
   // メッセージ送信
   // ============================
   const handleSendMessage = async (text: string = inputText) => {
     if (!text.trim() || !currentUser) return;
 
     try {
-      // 1. メッセージを送信
-      const { error } = await supabase.from("messages").insert([
+      await supabase.from("messages").insert([
         {
           room_id: roomId,
           sender_id: currentUser.id,
@@ -153,69 +179,41 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         },
       ]);
 
-      if (error) throw error;
       setInputText("");
 
-      // 2. updated_at を更新
+      // ルーム更新
       await supabase
         .from("rooms")
         .update({ updated_at: new Date().toISOString() })
         .eq("id", roomId);
     } catch (e) {
-      console.error(e);
+      console.error("送信エラー:", e);
       alert("送信に失敗しました");
     }
   };
 
   // ============================
-  // ヘッダークリックアクション
+  // プロフィール画面へ遷移
   // ============================
   const goToHeaderAction = () => {
     if (currentRoom?.type === "dm" && currentRoom.partner) {
       navigate(`/users/${currentRoom.partner.id}`);
-    } else if (
-      currentRoom?.type === "group" &&
-      currentUser?.role === UserRole.STORE
-    ) {
-      navigate(`/group/edit/${currentRoom.id}`);
     }
   };
 
   if (!currentUser) return null;
-  if (!currentRoom) {
+  if (!currentRoom)
     return <div className="chat-loading">読み込み中...</div>;
-  }
 
-  console.log("===== STORE CHAT CHECK =====");
-console.log("CurrentUser:", currentUser);
-console.log("CurrentUser.role:", currentUser?.role);
-
-console.log("CurrentRoom:", currentRoom);
-console.log("Room.type:", currentRoom?.type);
-
-console.log("Partner:", currentRoom?.partner);
-console.log("Partner.role:", currentRoom?.partner?.role);
-
-console.log("isStoreChat 判定:", {
-  cond1: currentRoom?.type === "dm",
-  cond2: currentRoom?.partner !== undefined,
-  cond3: currentUser?.role === UserRole.USER,
-  cond4: currentRoom?.partner?.role === UserRole.STORE,
-});
-
-
-  // ============================
-  // ★ 店舗チャット判定（安全版）
-  // ============================
   const isStoreChat =
-    currentRoom?.type === "dm" &&
-    currentRoom?.partner !== undefined &&
-    currentUser?.role === UserRole.USER &&
+    currentRoom.type === "dm" &&
+    currentRoom.partner &&
+    currentUser.role === UserRole.USER &&
     currentRoom.partner.role === UserRole.STORE;
 
   const headerTitle =
     currentRoom.type === "group"
-      ? currentRoom.group_name || "グループチャット"
+      ? currentRoom.group_name
       : currentRoom.partner?.name || "退会済みユーザー";
 
   const headerImage =
@@ -225,13 +223,8 @@ console.log("isStoreChat 判定:", {
 
   return (
     <div className="chat-screen">
-      {/* 
-        ★修正: 戻るボタンを含むヘッダー全体を、
-        共通ヘッダーと被らないように「相手の情報だけ表示するバー」に変更
-      */}
+      {/* Header */}
       <div className="chat-header">
-        {/* 左側の戻るボタンを削除しました */}
-
         <div
           className="chat-header-main"
           onClick={goToHeaderAction}
@@ -298,9 +291,12 @@ console.log("isStoreChat 判定:", {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Rich Menu (店舗とのDMかつ自分がユーザーの場合のみ) */}
+      {/* Rich Menu */}
       {isStoreChat && currentRoom.partner && (
-        <RichMenu storeId={currentRoom.partner.id} onSend={handleSendMessage} />
+        <RichMenu
+          storeId={currentRoom.partner.id}
+          onSend={handleSendMessage}
+        />
       )}
 
       {/* Input */}
