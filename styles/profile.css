@@ -1,161 +1,175 @@
 /* ===============================
-   Profile Screen Global Styles
+   Public Profile Screen Base
 =============================== */
 
-.profile-screen {
+.public-profile-screen {
   max-width: 480px;
   margin: 0 auto;
-  padding: 20px;
-  box-sizing: border-box;
+  padding: 20px 16px 40px;
   font-family: sans-serif;
+  box-sizing: border-box;
 }
 
-/* ヘッダー */
-.profile-heading {
-  font-size: 26px;
-  text-align: center;
-  font-weight: bold;
-  margin-bottom: 10px;
-}
+/* ===============================
+   Avatar
+=============================== */
 
-/* ======= Hero（アイコン背景） ======= */
-.profile-hero-bg {
+.public-profile-avatar-wrapper {
   width: 100%;
-  height: 130px;
-  background: #e5e7eb;
-  border-radius: 80px;
-  position: relative;
-  margin: 0 auto;
-  margin-top: 20px;
-  margin-bottom: 60px; /* 名前とぶつからないように余白 */
+  text-align: center;
+  margin-top: 10px;
 }
 
-/* アバター（中央に配置して切れない） */
-.profile-avatar-wrapper {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-.profile-avatar-image {
-  width: 130px;
-  height: 130px;
+.public-profile-avatar-image {
+  width: 140px;
+  height: 140px;
   border-radius: 9999px;
   object-fit: cover;
+  margin: 0 auto;
   border: 4px solid white;
-  background: white;
+  box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* 名前 & ロール */
-.profile-info-center {
+/* ===============================
+   Name
+=============================== */
+
+.public-profile-name {
   text-align: center;
-  margin-bottom: 20px;
-}
-
-.profile-name {
+  margin-top: 18px;
   font-size: 22px;
-  font-weight: bold;
-  margin-bottom: 6px;
+  font-weight: 700;
+  color: #333;
 }
 
-/* ロールバッジ */
-.profile-role-badge {
+/* ===============================
+   Badge Row (Role / Store)
+=============================== */
+
+.public-profile-badge-row {
+  text-align: center;
+  margin-top: 8px;
+}
+
+.public-profile-role-badge {
   display: inline-block;
-  padding: 6px 14px;
-  background: #eee;
-  border-radius: 20px;
+  padding: 6px 12px;
+  background: #ececec;
+  border-radius: 18px;
   font-size: 12px;
-  color: #555;
   font-weight: 600;
+  margin-right: 6px;
 }
 
-/* ======= カードレイアウト ======= */
-.profile-cards {
+/* CAST */
+.public-profile-role-cast {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+/* STORE */
+.public-profile-role-store {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+/* USER */
+.public-profile-role-user {
+  background: #e5e7eb;
+  color: #374151;
+}
+
+/* Store name badge */
+.public-profile-store-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 16px;
+  background: #f4f4f5;
+  color: #555;
+  font-size: 12px;
+}
+
+/* ===============================
+   Card List
+=============================== */
+
+.public-profile-card-list {
+  margin-top: 22px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
-.profile-card {
+.public-profile-card {
   background: white;
   padding: 16px;
   border-radius: 12px;
   border: 1px solid #ddd;
 }
 
-.profile-card label {
+.public-profile-card-label {
   font-size: 13px;
-  color: #666;
+  color: #777;
 }
 
-/* IDカードは横並び */
-.profile-card-id {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.profile-copy-button {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid #777;
-  background: #fff;
-  cursor: pointer;
-}
-
-/* ======= 編集フォーム ======= */
-.edit-form {
-  display: grid;
-  gap: 14px;
-  margin-bottom: 20px;
-}
-
-.edit-form label {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.edit-form input,
-.edit-form textarea {
-  width: 100%;
-  padding: 12px;
-  border: 1px solid #ccc;
-  border-radius: 10px;
+.public-profile-card-text {
+  margin-top: 6px;
   font-size: 15px;
-  box-sizing: border-box;
+  color: #333;
+  line-height: 1.5;
 }
 
-.edit-form textarea {
-  resize: vertical;
+/* ===============================
+   Footer Actions
+=============================== */
+
+.public-profile-footer {
+  margin-top: 28px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-/* ======= ボタン共通 ======= */
-.profile-save-button,
-.profile-edit-button,
-.profile-logout-button,
-.profile-cancel-button {
+/* 共通ボタン */
+.public-profile-action-button,
+.public-profile-action-button-secondary,
+.public-profile-action-button-danger,
+.public-profile-action-button-green,
+.public-profile-action-button-disabled {
   width: 100%;
   padding: 14px;
-  border-radius: 10px;
-  margin-bottom: 14px;
+  border-radius: 12px;
   font-size: 16px;
-  cursor: pointer;
+  font-weight: 600;
   border: none;
+  cursor: pointer;
 }
 
-/* ボタン色分け */
-.profile-edit-button,
-.profile-save-button {
-  background: #4f46e5;
+/* メインアクション */
+.public-profile-action-button {
+  background: #6d28d9;
   color: white;
 }
 
-.profile-cancel-button {
-  background: #ddd;
+/* サブ（メッセージ送る） */
+.public-profile-action-button-secondary {
+  background: #f3f4f6;
   color: #333;
 }
 
-.profile-logout-button {
-  background: #f87171;
-  color: white;
+/* 友だちステータス */
+.public-profile-action-button-green {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.public-profile-action-button-danger {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.public-profile-action-button-disabled {
+  background: #e5e7eb;
+  color: #6b7280;
+  cursor: default;
 }

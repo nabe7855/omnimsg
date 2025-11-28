@@ -1,9 +1,19 @@
+"use client";
+
 import { supabase } from "@/lib/supabaseClient";
 import { Profile, UserRole } from "@/lib/types";
 import { PublicProfileProps } from "@/lib/types/screen";
+import "@/styles/profile.css";
 import React, { useEffect, useState } from "react";
 
-// 画像のフォールバック用
+import {
+  acceptFriendRequest,
+  FriendshipStatus,
+  getFriendshipStatus,
+  removeFriend,
+  sendFriendRequest,
+} from "@/lib/db/friendships";
+
 const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
 
 export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
@@ -15,235 +25,214 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
   const [storeProfile, setStoreProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ============ 読み込み (Supabase) ============
+  // 🔥 友だち状態
+  const [friendStatus, setFriendStatus] = useState<FriendshipStatus>("none");
+
+  // ============================================
+  // プロフィール読み込み
+  // ============================================
   useEffect(() => {
     const load = async () => {
-      // 1. ターゲットユーザーの情報を取得
-      const { data: user, error } = await supabase
+      const { data: user } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", targetUserId)
         .single();
 
-      if (error || !user) {
-        setLoading(false);
-        return;
-      }
+      if (user) {
+        setProfile(user as Profile);
 
-      setProfile(user as Profile);
+        // Cast → 店舗情報取得
+        if (user.role === UserRole.CAST && user.store_id) {
+          const { data: store } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", user.store_id)
+            .single();
 
-      // 2. Cast なら店舗情報も取得
-      if (user.role === UserRole.CAST && user.store_id) {
-        const { data: store } = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("id", user.store_id)
-          .single();
+          if (store) setStoreProfile(store as Profile);
+        }
 
-        if (store) {
-          setStoreProfile(store as Profile);
+        // ⭐ 友だち状態も取得
+        if (currentUser) {
+          const status = await getFriendshipStatus(targetUserId);
+          setFriendStatus(status);
         }
       }
 
       setLoading(false);
     };
+
     load();
-  }, [targetUserId]);
+  }, [targetUserId, currentUser]);
 
-  // ============ チャットルーム取得・作成ロジック (共通) ============
-  const getOrCreateRoom = async (partnerId: string) => {
-    // ★ currentUser が null の場合は処理を中断
-    if (!currentUser) return null;
+  // ============================================
+  // 友だち関係イベント
+  // ============================================
 
-    try {
-      // A. 既存のルームを探す
-      // 自分の参加ルーム一覧を取得
-      const { data: myRooms } = await supabase
-        .from("room_participants")
-        .select("room_id")
-        .eq("user_id", currentUser.id);
+  const handleSendFriendRequest = async () => {
+    if (!profile) return;
 
-      let existingRoomId = null;
-
-      if (myRooms && myRooms.length > 0) {
-        const myRoomIds = myRooms.map((r) => r.room_id);
-
-        // 相手も参加しているルームを探す (共通のroom_id)
-        const { data: targetRooms } = await supabase
-          .from("room_participants")
-          .select("room_id")
-          .eq("user_id", partnerId)
-          .in("room_id", myRoomIds)
-          .maybeSingle();
-
-        if (targetRooms) {
-          existingRoomId = targetRooms.room_id;
-        }
-      }
-
-      if (existingRoomId) {
-        return existingRoomId;
-      }
-
-      // B. なければ新規作成
-      // 明示的に type: 'dm' を指定
-      const { data: newRoom, error: roomError } = await supabase
-        .from("rooms")
-        .insert({ type: "dm" })
-        .select()
-        .single();
-
-      if (roomError) {
-        console.error("Room create error:", roomError);
-        throw roomError;
-      }
-      if (!newRoom) throw new Error("ルーム作成失敗");
-
-      // 参加者を追加 (自分と相手)
-      const { error: participantError } = await supabase
-        .from("room_participants")
-        .insert([
-          { room_id: newRoom.id, user_id: currentUser.id },
-          { room_id: newRoom.id, user_id: partnerId },
-        ]);
-
-      if (participantError) {
-        console.error("Participant create error:", participantError);
-        throw participantError;
-      }
-
-      return newRoom.id;
-    } catch (e: any) {
-      console.error("Chat start error:", e);
-      alert(`チャットの開始に失敗しました: ${e.message}`);
-      return null;
+    const res = await sendFriendRequest(profile.id);
+    if (res.error) {
+      alert("友だち申請に失敗しました");
+    } else {
+      setFriendStatus("pending_request");
     }
   };
 
-  // ============ 店舗とのDMへ遷移 ============
-  const handleContactStore = async () => {
-    if (!currentUser || !storeProfile) return;
-    const roomId = await getOrCreateRoom(storeProfile.id);
-    if (roomId) navigate(`/talk/${roomId}`);
+  const handleAcceptFriendRequest = async () => {
+    if (!profile) return;
+
+    const res = await acceptFriendRequest(profile.id);
+    if (res.error) {
+      alert("承認に失敗しました");
+    } else {
+      setFriendStatus("accepted");
+    }
   };
 
-  // ============ ターゲットとのDMへ遷移 ============
+  const handleRemoveFriend = async () => {
+    if (!profile) return;
+    if (!confirm("友だちを解除しますか？")) return;
+
+    const res = await removeFriend(profile.id);
+    if (res.error) {
+      alert("解除に失敗しました");
+    } else {
+      setFriendStatus("none");
+    }
+  };
+
+  // ============================================
+  // チャット開始（既存）
+  // ============================================
+  const getOrCreateRoom = async (partnerId: string) => {
+    if (!currentUser) return null;
+
+    // 既存ルーム確認
+    const { data: myRooms } = await supabase
+      .from("room_participants")
+      .select("room_id")
+      .eq("user_id", currentUser.id);
+
+    if (myRooms && myRooms.length > 0) {
+      const myIds = myRooms.map((r) => r.room_id);
+
+      const { data: targetRoom } = await supabase
+        .from("room_participants")
+        .select("room_id")
+        .eq("user_id", partnerId)
+        .in("room_id", myIds)
+        .maybeSingle();
+
+      if (targetRoom) return targetRoom.room_id;
+    }
+
+    // 新規作成
+    const { data: newRoom } = await supabase
+      .from("rooms")
+      .insert({ type: "dm" })
+      .select()
+      .single();
+
+    await supabase.from("room_participants").insert([
+      { room_id: newRoom.id, user_id: currentUser.id },
+      { room_id: newRoom.id, user_id: partnerId },
+    ]);
+
+    return newRoom.id;
+  };
+
   const handleSendMessage = async () => {
     if (!currentUser || !profile) return;
     const roomId = await getOrCreateRoom(profile.id);
     if (roomId) navigate(`/talk/${roomId}`);
   };
 
-  // ============ ロード中 / エラー表示 ============
-  if (!currentUser) return null;
+  // ============================================
+  // UI ロード
+  // ============================================
 
-  if (loading) {
-    return (
-      <div className="public-profile-message public-profile-message-muted">
-        読み込み中...
-      </div>
-    );
-  }
+  if (loading) return <div>読み込み中...</div>;
+  if (!profile) return <div>ユーザーが見つかりません</div>;
+  const isMe = currentUser?.id === profile.id;
 
-  if (!profile) {
-    return (
-      <div className="public-profile-message">ユーザーが見つかりません</div>
-    );
-  }
+  // ============================================
+  // 🔥 友だちボタンの UI を作成！
+  // ============================================
 
-  const isMe = currentUser.id === profile.id;
+  const renderFriendButton = () => {
+    switch (friendStatus) {
+      case "none":
+        return (
+          <button
+            className="public-profile-action-button"
+            onClick={handleSendFriendRequest}
+          >
+            ➕ 友だち追加
+          </button>
+        );
+
+      case "pending_request":
+        return (
+          <button className="public-profile-action-button-disabled">
+            ⏳ 承認待ち...
+          </button>
+        );
+
+      case "pending_received":
+        return (
+          <button
+            className="public-profile-action-button"
+            onClick={handleAcceptFriendRequest}
+          >
+            ✅ 承認する
+          </button>
+        );
+
+      case "accepted":
+        return (
+          <>
+            <button className="public-profile-action-button-green">
+              ✔ 友だち
+            </button>
+            <button
+              onClick={handleRemoveFriend}
+              className="public-profile-action-button-danger"
+            >
+              ❌ 解除
+            </button>
+          </>
+        );
+    }
+  };
 
   return (
     <div className="public-profile-screen">
-      {/* Header (Layoutで戻るボタンがあるため削除) */}
-
-      {/* Main Content */}
       <div className="public-profile-main">
-        <div className="public-profile-avatar-wrapper">
-          <img
-            src={profile.avatar_url || PLACEHOLDER_AVATAR}
-            alt={profile.name}
-            className="public-profile-avatar-image"
-            onError={(e) =>
-              ((e.target as HTMLImageElement).src = PLACEHOLDER_AVATAR)
-            }
-          />
-        </div>
+        <img
+          src={profile.avatar_url || PLACEHOLDER_AVATAR}
+          className="public-profile-avatar-image"
+        />
 
         <h2 className="public-profile-name">{profile.name}</h2>
 
-        <div className="public-profile-badge-row">
-          {/* ロールバッジ */}
-          <span
-            className={
-              "public-profile-role-badge " +
-              (profile.role === UserRole.CAST
-                ? "public-profile-role-cast"
-                : profile.role === UserRole.STORE
-                ? "public-profile-role-store"
-                : "public-profile-role-user")
-            }
-          >
-            {profile.role === UserRole.CAST
-              ? "CAST"
-              : profile.role === UserRole.STORE
-              ? "STORE"
-              : "USER"}
-          </span>
+        {/* 友だち UI（自分以外の場合） */}
+        {!isMe && (
+          <div className="public-profile-footer">{renderFriendButton()}</div>
+        )}
 
-          {/* Cast の場合に店舗バッジ */}
-          {storeProfile && (
-            <span className="public-profile-store-badge">
-              <span style={{ marginRight: "4px" }}>🏢</span>
-              {storeProfile.name}
-            </span>
-          )}
-        </div>
-
-        <div className="public-profile-card-list">
-          <div className="public-profile-card">
-            <label className="public-profile-card-label">自己紹介</label>
-            <p className="public-profile-card-text">
-              {profile.bio || "自己紹介はありません"}
-            </p>
-          </div>
-
-          {profile.role === UserRole.STORE && profile.business_hours && (
-            <div className="public-profile-card">
-              <label className="public-profile-card-label">営業時間</label>
-              <p className="public-profile-card-text">
-                {profile.business_hours}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Action Buttons (自分以外の場合のみ) */}
-      {!isMe && (
-        <div className="public-profile-footer">
-          {/* ユーザーがキャストを見ている場合、店舗への問い合わせボタンも出す */}
-          {currentUser.role === UserRole.USER &&
-            profile.role === UserRole.CAST &&
-            storeProfile && (
-              <button
-                onClick={handleContactStore}
-                className="public-profile-action-button public-profile-action-button-primary"
-                type="button"
-              >
-                店舗に問い合わせる
-              </button>
-            )}
-
+        {/* DM ボタン */}
+        {!isMe && (
           <button
+            className="public-profile-action-button-secondary"
             onClick={handleSendMessage}
-            className="public-profile-action-button public-profile-action-button-secondary"
-            type="button"
           >
             💬 メッセージを送る
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
