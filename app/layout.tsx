@@ -2,6 +2,8 @@
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
+// ★追加: プッシュ通知用のフックをインポート
+import { usePushSubscription } from "@/hooks/usePushSubscription";
 import "@/styles/layout.css";
 import { usePathname, useRouter } from "next/navigation";
 import "./globals.css";
@@ -14,6 +16,9 @@ export default function RootLayout({
   const router = useRouter();
   const pathname = usePathname();
   const { currentUser, loaded } = useAuth();
+
+  // ★追加: ログインユーザーがいる場合、プッシュ通知の許可・登録処理を実行
+  usePushSubscription(currentUser?.id);
 
   // auth ロード完了前は空のコンテナだけ出す
   if (!loaded) {
@@ -76,15 +81,8 @@ export default function RootLayout({
 
   const footerItems = getFooterItems();
 
-  // ★修正箇所：ログイン画面以外、かつユーザーが存在する場合にのみフッターを表示
   const shouldShowFooter =
     currentUser && footerItems.length > 0 && pathname !== "/login";
-
-  // デバッグ用（不要なら削除してください）
-  console.log("Current User:", currentUser);
-  console.log("Loaded:", loaded);
-  console.log("User Role:", currentUser?.role);
-  console.log("Footer Items:", footerItems);
 
   return (
     <html lang="ja">
@@ -112,7 +110,7 @@ export default function RootLayout({
             </div>
           </header>
 
-          {/* Main（下に 60px 余白を持つスクロール領域） */}
+          {/* Main */}
           <main className="app-main content-area">{children}</main>
 
           {/* Bottom Nav */}
