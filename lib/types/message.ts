@@ -24,4 +24,5 @@ export interface Message {
   message_type: MessageType;
   media_url?: string; // 画像・音声のURL
   created_at: string;
+  link_url?: string;
 }

@@ -112,7 +112,8 @@ export const sendBroadcastMessage = async (
   senderId: string,
   targetIds: string[],
   text: string,
-  imageUrl?: string
+  imageUrl?: string,
+  linkUrl?: string // ★追加: 画像のリンク先URL
 ): Promise<number> => {
   let successCount = 0;
 
@@ -121,7 +122,7 @@ export const sendBroadcastMessage = async (
     try {
       let roomId = "";
 
-      // ★修正箇所: RPCを使って新旧テーブルから確実に既存DMルームIDを取得
+      // 1. 既存のDMルームを探す (RPCを使用)
       const { data: existingRoomId, error: rpcError } = await supabase.rpc(
         "get_dm_room_id",
         {
@@ -145,7 +146,7 @@ export const sendBroadcastMessage = async (
         if (roomError || !newRoom) continue; // 失敗したらスキップ
         roomId = newRoom.id;
 
-        // メンバー追加 (新しいテーブル room_members に追加)
+        // メンバー追加
         await supabase.from("room_members").insert([
           { room_id: roomId, profile_id: senderId },
           { room_id: roomId, profile_id: targetId },
@@ -162,6 +163,7 @@ export const sendBroadcastMessage = async (
           sender_id: senderId,
           content: imageUrl,
           message_type: MessageType.IMAGE,
+          link_url: linkUrl || null, // ★追加: リンクURLをDBに保存
         });
       }
 
@@ -181,7 +183,7 @@ export const sendBroadcastMessage = async (
           .insert(messagesToInsert);
 
         if (!msgError) {
-          // ルーム更新日時を更新（一覧で上に表示させるため）
+          // ルーム更新日時を更新
           await supabase
             .from("rooms")
             .update({ updated_at: new Date().toISOString() })

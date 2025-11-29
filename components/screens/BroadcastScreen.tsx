@@ -22,6 +22,9 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ★追加: リンクURL用ステート
+  const [linkUrl, setLinkUrl] = useState("");
+
   const [targets, setTargets] = useState<BroadcastTargets | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -155,12 +158,13 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
         publicImageUrl = data.publicUrl;
       }
 
-      // 送信実行
+      // 送信実行 (linkUrlも渡す)
       const count = await sendBroadcastMessage(
         currentUser.id,
         Array.from(selectedIds),
         text,
-        publicImageUrl
+        publicImageUrl,
+        linkUrl // ★追加: リンクURLを渡す
       );
 
       alert(`${count}件 送信しました！`);
@@ -258,7 +262,7 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
             }}
           />
 
-          {/* 1. 直接の友達 (キャストなら自分の客、店舗なら店舗直の客) */}
+          {/* 1. 直接の友達 */}
           {targets?.directUsers.length ? (
             <div style={{ marginBottom: "15px" }}>
               <div
@@ -438,46 +442,71 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
               📷 画像を追加
             </button>
             {previewUrl && (
-              <div
-                style={{
-                  position: "relative",
-                  display: "inline-block",
-                  marginTop: "10px",
-                }}
-              >
-                <img
-                  src={previewUrl}
-                  style={{
-                    maxWidth: "200px",
-                    maxHeight: "200px",
-                    borderRadius: "8px",
-                    border: "1px solid #eee",
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    setImageFile(null);
-                    setPreviewUrl(null);
-                  }}
-                  style={{
-                    position: "absolute",
-                    top: -5,
-                    right: -5,
-                    background: "black",
-                    color: "white",
-                    borderRadius: "50%",
-                    width: 20,
-                    height: 20,
-                    border: "none",
-                    cursor: "pointer",
-                    fontSize: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  ×
-                </button>
+              <div style={{ marginTop: "10px" }}>
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  <img
+                    src={previewUrl}
+                    style={{
+                      maxWidth: "200px",
+                      maxHeight: "200px",
+                      borderRadius: "8px",
+                      border: "1px solid #eee",
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      setImageFile(null);
+                      setPreviewUrl(null);
+                      setLinkUrl(""); // リセット
+                    }}
+                    style={{
+                      position: "absolute",
+                      top: -5,
+                      right: -5,
+                      background: "black",
+                      color: "white",
+                      borderRadius: "50%",
+                      width: 20,
+                      height: 20,
+                      border: "none",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {/* ★追加: 画像がある場合のみリンクURL入力欄を表示 */}
+                <div style={{ marginTop: "10px" }}>
+                  <label
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                      color: "#666",
+                      display: "block",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    画像リンク先URL (任意)
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://example.com"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      fontSize: "14px",
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>

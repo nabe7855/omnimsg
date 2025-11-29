@@ -651,17 +651,38 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                       alignItems: isMe ? "flex-end" : "flex-start",
                     }}
                   >
-                    <img
-                      src={m.content}
-                      alt="画像"
-                      style={{
-                        maxWidth: "200px",
-                        borderRadius: "10px",
-                        border: "1px solid #ddd",
-                        cursor: "pointer",
-                      }}
-                      onClick={() => window.open(m.content, "_blank")}
-                    />
+                    {/* ★リンクがある場合はリンク付き画像、なければ通常画像 */}
+                    {m.link_url ? (
+                      <a
+                        href={m.link_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: "block", cursor: "pointer" }}
+                      >
+                        <img
+                          src={m.content}
+                          alt="画像"
+                          style={{
+                            maxWidth: "200px",
+                            borderRadius: "10px",
+                            border: "2px solid #007aff", // リンク付きを視覚的に表現
+                          }}
+                        />
+                      </a>
+                    ) : (
+                      <img
+                        src={m.content}
+                        alt="画像"
+                        style={{
+                          maxWidth: "200px",
+                          borderRadius: "10px",
+                          border: "1px solid #ddd",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => window.open(m.content, "_blank")}
+                      />
+                    )}
+
                     <button
                       onClick={() => handleDownloadFile(m.content, "image")}
                       style={{
@@ -992,58 +1013,50 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                   <p style={{ textAlign: "center" }}>読み込み中...</p>
                 ) : (
                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                    {addCandidates.length === 0 ? (
-                      <p style={{ color: "#888", textAlign: "center" }}>
-                        追加できる候補がいません
-                      </p>
-                    ) : (
-                      addCandidates.map((candidate) => (
-                        <li
-                          key={candidate.id}
+                    {addCandidates.map((candidate) => (
+                      <li
+                        key={candidate.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          marginBottom: "10px",
+                          paddingBottom: "10px",
+                          borderBottom: "1px solid #eee",
+                        }}
+                      >
+                        <img
+                          src={candidate.avatar_url || PLACEHOLDER_AVATAR}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            marginBottom: "10px",
-                            paddingBottom: "10px",
-                            borderBottom: "1px solid #eee",
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            marginRight: "10px",
+                          }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: "bold" }}>
+                            {candidate.name}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#888" }}>
+                            {candidate.role === "cast" ? "キャスト" : "お客様"}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleAddMember(candidate)}
+                          style={{
+                            backgroundColor: "#6b46c1",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "5px",
+                            padding: "5px 10px",
+                            fontSize: "12px",
                           }}
                         >
-                          <img
-                            src={candidate.avatar_url || PLACEHOLDER_AVATAR}
-                            style={{
-                              width: "40px",
-                              height: "40px",
-                              borderRadius: "50%",
-                              objectFit: "cover",
-                              marginRight: "10px",
-                            }}
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: "bold" }}>
-                              {candidate.name}
-                            </div>
-                            <div style={{ fontSize: "12px", color: "#888" }}>
-                              {candidate.role === "cast"
-                                ? "キャスト"
-                                : "お客様"}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleAddMember(candidate)}
-                            style={{
-                              backgroundColor: "#6b46c1",
-                              color: "white",
-                              border: "none",
-                              borderRadius: "5px",
-                              padding: "5px 10px",
-                              fontSize: "12px",
-                            }}
-                          >
-                            追加
-                          </button>
-                        </li>
-                      ))
-                    )}
+                          追加
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 )}
                 <button
