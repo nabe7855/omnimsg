@@ -16,6 +16,10 @@ import React, { useEffect, useRef, useState } from "react";
 
 const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
 
+// 制限設定
+const MAX_RECORDING_TIME_MS = 60000; // 60秒
+const MAX_AUDIO_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
 export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   currentUser,
   roomId,
@@ -32,8 +36,8 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const isCancelledRef = useRef(false);
-  // ★追加: 録音したファイル形式を覚えておく変数 (初期値: audio/webm)
   const mimeTypeRef = useRef<string>("audio/webm");
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null); // タイマーRef
 
   // メンバー管理用ステート
   const [memberProfiles, setMemberProfiles] = useState<Profile[]>([]);
@@ -245,7 +249,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [messages]);
 
   // ============================
-  // ★修正: 録音開始（MIMEタイプ自動判別）
+  // 録音開始（MIMEタイプ自動判別 + 時間制限）
   // ============================
   const startRecording = async () => {
     try {
@@ -254,17 +258,15 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       // ブラウザが対応しているMIMEタイプを判定
       let mimeType = "audio/webm";
       if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-        mimeType = "audio/webm;codecs=opus"; // Chrome, Firefoxなど
+        mimeType = "audio/webm;codecs=opus";
       } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
-        mimeType = "audio/mp4"; // iPhone (Safari)
+        mimeType = "audio/mp4";
       } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
-        mimeType = "audio/ogg"; // その他
+        mimeType = "audio/ogg";
       }
 
-      // 判定したタイプをRefに保存
       mimeTypeRef.current = mimeType;
 
-      // オプションを指定してレコーダー作成
       const recorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
@@ -277,23 +279,45 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       };
 
       recorder.onstop = async () => {
+        // タイマー解除
+        if (recordingTimerRef.current) {
+          clearTimeout(recordingTimerRef.current);
+          recordingTimerRef.current = null;
+        }
+
         if (isCancelledRef.current) {
           stream.getTracks().forEach((track) => track.stop());
           return;
         }
 
-        // 保存しておいた正しいMIMEタイプでBlobを作成
         const audioBlob = new Blob(audioChunksRef.current, {
           type: mimeTypeRef.current,
         });
-        await uploadAudio(audioBlob);
 
+        // ファイルサイズ制限チェック
+        if (audioBlob.size > MAX_AUDIO_FILE_SIZE_BYTES) {
+          alert("ファイルサイズが大きすぎるため送信できませんでした。");
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        await uploadAudio(audioBlob);
         stream.getTracks().forEach((track) => track.stop());
       };
 
-      // 1秒ごとにデータを区切って保存（データ欠損防止）
       recorder.start(1000);
       setIsRecording(true);
+
+      // 時間制限タイマー
+      recordingTimerRef.current = setTimeout(() => {
+        if (
+          mediaRecorderRef.current &&
+          mediaRecorderRef.current.state === "recording"
+        ) {
+          stopRecording(); // 強制停止＆送信
+          alert("録音時間は最大60秒です");
+        }
+      }, MAX_RECORDING_TIME_MS);
     } catch (err) {
       console.error("マイクへのアクセスに失敗しました:", err);
       alert("マイクの使用を許可してください");
@@ -304,8 +328,14 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   // 録音停止 & 送信
   // ============================
   const stopRecording = () => {
+    // タイマー解除
+    if (recordingTimerRef.current) {
+      clearTimeout(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop(); // onstop発火 -> uploadAudio
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
   };
@@ -314,27 +344,30 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   // 録音キャンセル
   // ============================
   const cancelRecording = () => {
+    // タイマー解除
+    if (recordingTimerRef.current) {
+      clearTimeout(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
     if (mediaRecorderRef.current && isRecording) {
       isCancelledRef.current = true;
-      mediaRecorderRef.current.stop(); // onstop発火 -> フラグを見て中断
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
   };
 
   // ============================
-  // ★修正: 音声アップロード
+  // 音声アップロード
   // ============================
   const uploadAudio = async (audioBlob: Blob) => {
     if (!currentUser) return;
 
     try {
-      // 拡張子をMIMEタイプに合わせて決定
       const ext = mimeTypeRef.current.includes("mp4") ? "mp4" : "webm";
       const fileName = `${Date.now()}-${Math.random()}.${ext}`;
       const filePath = `${roomId}/${fileName}`;
 
-      // Storageにアップロード
-      // contentTypeを明示的に指定して、ブラウザや再生側が正しく認識できるようにする
       const { error: uploadError } = await supabase.storage
         .from("chat-images")
         .upload(filePath, audioBlob, {
@@ -347,7 +380,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         data: { publicUrl },
       } = supabase.storage.from("chat-images").getPublicUrl(filePath);
 
-      // メッセージ送信
       const { data: insertedMsg, error: insertError } = await supabase
         .from("messages")
         .insert([
@@ -960,50 +992,58 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                   <p style={{ textAlign: "center" }}>読み込み中...</p>
                 ) : (
                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                    {addCandidates.map((candidate) => (
-                      <li
-                        key={candidate.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          marginBottom: "10px",
-                          paddingBottom: "10px",
-                          borderBottom: "1px solid #eee",
-                        }}
-                      >
-                        <img
-                          src={candidate.avatar_url || PLACEHOLDER_AVATAR}
+                    {addCandidates.length === 0 ? (
+                      <p style={{ color: "#888", textAlign: "center" }}>
+                        追加できる候補がいません
+                      </p>
+                    ) : (
+                      addCandidates.map((candidate) => (
+                        <li
+                          key={candidate.id}
                           style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            objectFit: "cover",
-                            marginRight: "10px",
-                          }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: "bold" }}>
-                            {candidate.name}
-                          </div>
-                          <div style={{ fontSize: "12px", color: "#888" }}>
-                            {candidate.role === "cast" ? "キャスト" : "お客様"}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleAddMember(candidate)}
-                          style={{
-                            backgroundColor: "#6b46c1",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "5px",
-                            padding: "5px 10px",
-                            fontSize: "12px",
+                            display: "flex",
+                            alignItems: "center",
+                            marginBottom: "10px",
+                            paddingBottom: "10px",
+                            borderBottom: "1px solid #eee",
                           }}
                         >
-                          追加
-                        </button>
-                      </li>
-                    ))}
+                          <img
+                            src={candidate.avatar_url || PLACEHOLDER_AVATAR}
+                            style={{
+                              width: "40px",
+                              height: "40px",
+                              borderRadius: "50%",
+                              objectFit: "cover",
+                              marginRight: "10px",
+                            }}
+                          />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: "bold" }}>
+                              {candidate.name}
+                            </div>
+                            <div style={{ fontSize: "12px", color: "#888" }}>
+                              {candidate.role === "cast"
+                                ? "キャスト"
+                                : "お客様"}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleAddMember(candidate)}
+                            style={{
+                              backgroundColor: "#6b46c1",
+                              color: "white",
+                              border: "none",
+                              borderRadius: "5px",
+                              padding: "5px 10px",
+                              fontSize: "12px",
+                            }}
+                          >
+                            追加
+                          </button>
+                        </li>
+                      ))
+                    )}
                   </ul>
                 )}
                 <button
