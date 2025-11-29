@@ -88,10 +88,12 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           .eq("user_id", currentUser.id);
 
         // 3. 両方のルームIDを結合して重複を削除 (Setを使用)
-        const roomIds = Array.from(new Set([
-          ...(memberRows?.map((r) => r.room_id) || []),
-          ...(participantRows?.map((r) => r.room_id) || []),
-        ]));
+        const roomIds = Array.from(
+          new Set([
+            ...(memberRows?.map((r) => r.room_id) || []),
+            ...(participantRows?.map((r) => r.room_id) || []),
+          ])
+        );
 
         if (roomIds.length === 0) {
           setRooms([]);
@@ -147,7 +149,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
               .from("room_members")
               .select("profile_id")
               .eq("room_id", room.id);
-            
+
             if (members) {
               const partnerObj = members.find(
                 (p) => p.profile_id !== currentUser.id
@@ -163,8 +165,6 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
             }
           }
 
-          // 相手が見つかった、または退会済み(undefined)でもDMとしてリストに追加
-          // (フィルタリングで弾かれるがデータとしては保持)
           result.push({ ...room, partner });
         }
 
@@ -179,24 +179,18 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
   /* ▼ タブフィルタリングロジック */
   const filteredRooms = rooms.filter((room) => {
     if (tab === "groups") {
-      // グループタブ
       return room.type === "group";
     } else if (tab === "friends") {
-      // 友だちタブ: DM かつ 相手が存在し、かつ友達リストに含まれる
       return (
         room.type === "dm" &&
         room.partner &&
         friendIds.includes(room.partner.id)
       );
     } else {
-      // その他タブ: DM かつ (相手が友達でない OR 相手が見つからない/退会済み)
       if (room.type !== "dm") return false;
-      
-      // パートナーデータがある場合 → 友達リストにないなら表示
       if (room.partner) {
         return !friendIds.includes(room.partner.id);
       }
-      // パートナーデータがない(退会済みなど)場合 → その他に表示
       return true;
     }
   });
@@ -205,23 +199,57 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
 
   return (
     <div className="room-list-wrapper">
-      {/* ▼ タブ切り替え */}
-      <div className="room-tab-container">
+      {/* ▼ タブ切り替え（Flexboxで横並び・均等幅に修正） */}
+      <div
+        className="room-tab-container"
+        style={{
+          display: "flex",
+          width: "100%",
+          borderBottom: "1px solid #eee",
+        }}
+      >
         <button
           className={`room-tab ${tab === "friends" ? "active" : ""}`}
           onClick={() => setTab("friends")}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: "10px 0",
+            cursor: "pointer",
+            background: "none",
+            border: "none",
+            borderBottom: tab === "friends" ? "2px solid #6b46c1" : "none",
+          }}
         >
           友だち
         </button>
         <button
           className={`room-tab ${tab === "others" ? "active" : ""}`}
           onClick={() => setTab("others")}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: "10px 0",
+            cursor: "pointer",
+            background: "none",
+            border: "none",
+            borderBottom: tab === "others" ? "2px solid #6b46c1" : "none",
+          }}
         >
           その他
         </button>
         <button
           className={`room-tab ${tab === "groups" ? "active" : ""}`}
           onClick={() => setTab("groups")}
+          style={{
+            flex: 1,
+            textAlign: "center",
+            padding: "10px 0",
+            cursor: "pointer",
+            background: "none",
+            border: "none",
+            borderBottom: tab === "groups" ? "2px solid #6b46c1" : "none",
+          }}
         >
           グループ
         </button>
@@ -237,7 +265,6 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           </div>
         ) : (
           filteredRooms.map((room) => {
-            // 表示名とアイコンの決定ロジック
             let title = "不明なルーム";
             let avatarUrl = PLACEHOLDER_AVATAR;
 
