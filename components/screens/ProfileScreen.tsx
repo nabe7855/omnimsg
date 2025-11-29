@@ -36,7 +36,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
   if (!currentUser) return <div>読み込み中...</div>;
 
   const [isEditing, setIsEditing] = useState(false);
-  // ★追加: 保存中かどうかのフラグ
   const [isSaving, setIsSaving] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -58,17 +57,48 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
     website_url: currentUser.website_url || "",
   });
 
+  // ==========================================
+  // ★修正点1: 初期表示時にDBから最新データを取得して上書きする
+  // ==========================================
   useEffect(() => {
-    setCurrentAvatarUrl(currentUser.avatar_url);
-    setForm({
-      name: currentUser.name || "",
-      email: currentUser.email || "",
-      bio: currentUser.bio || "",
-      business_hours: currentUser.business_hours || "",
-      address: currentUser.address || "",
-      phone_number: currentUser.phone_number || "",
-      website_url: currentUser.website_url || "",
-    });
+    const fetchLatestProfile = async () => {
+      // まずはpropsのデータで初期化
+      setCurrentAvatarUrl(currentUser.avatar_url);
+      setForm({
+        name: currentUser.name || "",
+        email: currentUser.email || "",
+        bio: currentUser.bio || "",
+        business_hours: currentUser.business_hours || "",
+        address: currentUser.address || "",
+        phone_number: currentUser.phone_number || "",
+        website_url: currentUser.website_url || "",
+      });
+
+      // DBから最新情報を取得
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", currentUser.id)
+        .single();
+
+      if (!error && data) {
+        // 取得できたらステートを最新情報で更新
+        setCurrentAvatarUrl(data.avatar_url);
+        setForm({
+          name: data.name || "",
+          email: data.email || "",
+          bio: data.bio || "",
+          business_hours: data.business_hours || "",
+          address: data.address || "",
+          phone_number: data.phone_number || "",
+          website_url: data.website_url || "",
+        });
+        // 念のためcurrentUserオブジェクトも更新しておく
+        Object.assign(currentUser, data);
+      }
+    };
+
+    fetchLatestProfile();
   }, [currentUser]);
 
   const updateField = (key: string, value: string) => {
@@ -97,7 +127,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
 
   // 保存処理
   const handleSave = async () => {
-    // ★追加: 保存中なら何もしない（ダブルクリック防止）
     if (isSaving) return;
     setIsSaving(true);
 
@@ -106,7 +135,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
     try {
       // 1. 画像が新しく選択されている場合の処理
       if (avatarFile) {
-        // 古い画像が存在する場合、Storageから削除する
         if (currentAvatarUrl) {
           const urlParts = currentAvatarUrl.split("/avatars/");
           if (urlParts.length > 1) {
@@ -121,7 +149,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
           }
         }
 
-        // 新しい画像のアップロード処理
         const fileExt = avatarFile.name.split(".").pop();
         const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
 
@@ -161,16 +188,16 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
       alert("保存中にエラーが発生しました");
       console.error(error);
     } finally {
-      // ★追加: 処理が終わったらフラグを戻す
       setIsSaving(false);
     }
   };
 
   const handleCancel = () => {
-    if (isSaving) return; // 保存中はキャンセル不可
+    if (isSaving) return;
     setIsEditing(false);
     setAvatarFile(null);
     setAvatarPreview(null);
+    // キャンセル時は元のcurrentUser（もしくはfetchした最新情報）に戻す
     setForm({
       name: currentUser.name || "",
       email: currentUser.email || "",
@@ -283,9 +310,27 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
                   <div>{form.phone_number || "未設定"}</div>
                 </div>
 
+                {/* ★修正点2: ホームページURLをリンク化 */}
                 <div className="profile-card">
                   <label>ホームページURL</label>
-                  <div>{form.website_url || "未設定"}</div>
+                  <div>
+                    {form.website_url ? (
+                      <a
+                        href={form.website_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          color: "#007aff",
+                          textDecoration: "underline",
+                          wordBreak: "break-all",
+                        }}
+                      >
+                        {form.website_url}
+                      </a>
+                    ) : (
+                      "未設定"
+                    )}
+                  </div>
                 </div>
               </>
             )}
@@ -370,6 +415,7 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
                   value={form.website_url}
                   onChange={(e) => updateField("website_url", e.target.value)}
                   disabled={isSaving}
+                  placeholder="https://..."
                 />
               </>
             )}
