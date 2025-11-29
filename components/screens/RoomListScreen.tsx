@@ -1,7 +1,7 @@
 "use client";
 
 import { supabase } from "@/lib/supabaseClient";
-import { Profile, RoomWithPartner } from "@/lib/types";
+import { Profile, RoomWithPartner, UserRole } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
 import "@/styles/RoomList.css";
 import React, { useEffect, useState } from "react";
@@ -165,6 +165,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
             }
           }
 
+          // 相手が見つかった、または退会済み(undefined)でもDMとしてリストに追加
           result.push({ ...room, partner });
         }
 
@@ -195,17 +196,75 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
     }
   });
 
+  // ============================================
+  // 一斉送信ボタン関連
+  // ============================================
+  const canBroadcast =
+    currentUser?.role === UserRole.STORE || currentUser?.role === UserRole.CAST;
+
   if (loading) return <div className="room-list-loading">読み込み中...</div>;
 
   return (
     <div className="room-list-wrapper">
-      {/* ▼ タブ切り替え（Flexboxで横並び・均等幅に修正） */}
+      {/* ▼ ヘッダー部分（タイトル ＆ 一斉送信ボタン） */}
+      <div
+        style={{
+          padding: "15px",
+          textAlign: "center",
+          fontWeight: "bold",
+          fontSize: "18px",
+          borderBottom: "1px solid #eee",
+          position: "relative",
+          backgroundColor: "white",
+        }}
+      >
+        トーク一覧
+        {canBroadcast && (
+          <button
+            onClick={() => navigate("/broadcast")}
+            style={{
+              position: "absolute",
+              right: "15px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "#6b46c1",
+              display: "flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "13px",
+              fontWeight: "normal",
+            }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              style={{ width: 20, height: 20 }}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5"
+              />
+            </svg>
+            一斉送信
+          </button>
+        )}
+      </div>
+
+      {/* ▼ タブ切り替え */}
       <div
         className="room-tab-container"
         style={{
           display: "flex",
           width: "100%",
           borderBottom: "1px solid #eee",
+          backgroundColor: "white",
         }}
       >
         <button
@@ -214,11 +273,14 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           style={{
             flex: 1,
             textAlign: "center",
-            padding: "10px 0",
+            padding: "12px 0",
             cursor: "pointer",
             background: "none",
             border: "none",
-            borderBottom: tab === "friends" ? "2px solid #6b46c1" : "none",
+            borderBottom:
+              tab === "friends" ? "2px solid #6b46c1" : "2px solid transparent",
+            color: tab === "friends" ? "#6b46c1" : "#666",
+            fontWeight: tab === "friends" ? "bold" : "normal",
           }}
         >
           友だち
@@ -229,11 +291,14 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           style={{
             flex: 1,
             textAlign: "center",
-            padding: "10px 0",
+            padding: "12px 0",
             cursor: "pointer",
             background: "none",
             border: "none",
-            borderBottom: tab === "others" ? "2px solid #6b46c1" : "none",
+            borderBottom:
+              tab === "others" ? "2px solid #6b46c1" : "2px solid transparent",
+            color: tab === "others" ? "#6b46c1" : "#666",
+            fontWeight: tab === "others" ? "bold" : "normal",
           }}
         >
           その他
@@ -244,11 +309,14 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           style={{
             flex: 1,
             textAlign: "center",
-            padding: "10px 0",
+            padding: "12px 0",
             cursor: "pointer",
             background: "none",
             border: "none",
-            borderBottom: tab === "groups" ? "2px solid #6b46c1" : "none",
+            borderBottom:
+              tab === "groups" ? "2px solid #6b46c1" : "2px solid transparent",
+            color: tab === "groups" ? "#6b46c1" : "#666",
+            fontWeight: tab === "groups" ? "bold" : "normal",
           }}
         >
           グループ
