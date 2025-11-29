@@ -54,6 +54,67 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [currentUser, navigate]);
 
   // ============================
+  // 既読化処理 (message_reads 対応版)
+  // ============================
+  const markAsRead = async () => {
+    if (!currentUser || !roomId) return;
+
+    try {
+      // 1. このルームの「自分以外が送信した」メッセージIDをすべて取得
+      const { data: roomMessages, error: msgError } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("room_id", roomId)
+        .neq("sender_id", currentUser.id);
+
+      if (msgError || !roomMessages || roomMessages.length === 0) return;
+
+      const messageIds = roomMessages.map((m) => m.id);
+
+      // 2. そのうち、すでに「自分が既読（message_readsに存在する）」にしているものを取得
+      const { data: myReads, error: readError } = await supabase
+        .from("message_reads")
+        .select("message_id")
+        .eq("user_id", currentUser.id)
+        .in("message_id", messageIds);
+
+      if (readError) {
+        console.error("既読状況の取得に失敗:", readError);
+        return;
+      }
+
+      // 3. 「未読のメッセージID」だけを抽出する
+      const readMessageIds = new Set(myReads?.map((r) => r.message_id));
+      const unreadMessageIds = messageIds.filter(
+        (id) => !readMessageIds.has(id)
+      );
+
+      if (unreadMessageIds.length === 0) return;
+
+      // 4. 未読分を message_reads テーブルに一括追加
+      const insertData = unreadMessageIds.map((msgId) => ({
+        message_id: msgId,
+        user_id: currentUser.id,
+        read_at: new Date().toISOString(),
+      }));
+
+      // insert ではなく upsert を使い、重複時は無視(ignoreDuplicates: true)する
+      const { error: insertError } = await supabase
+        .from("message_reads")
+        .upsert(insertData, {
+          onConflict: "message_id, user_id",
+          ignoreDuplicates: true,
+        });
+
+      if (insertError) {
+        console.error("既読の登録に失敗:", insertError);
+      }
+    } catch (e) {
+      console.error("既読処理エラー:", e);
+    }
+  };
+
+  // ============================
   // ルーム情報 & メンバー詳細読み込み
   // ============================
   useEffect(() => {
@@ -211,7 +272,11 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         .select("*")
         .eq("room_id", roomId)
         .order("created_at", { ascending: true });
-      if (data) setMessages(data);
+      if (data) {
+        setMessages(data);
+        // ★ 画面を開いたときに既読にする
+        markAsRead();
+      }
     };
     loadMessages();
 
@@ -220,20 +285,21 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT", // INSERTイベントのみ監視
           schema: "public",
           table: "messages",
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          if (payload.eventType === "INSERT") {
-            const newMsg = payload.new as Message;
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === newMsg.id)) return prev;
-              return [...prev, newMsg];
-            });
-          } else if (payload.eventType === "DELETE") {
-            setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
+          const newMsg = payload.new as Message;
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+
+          // ★ 新着メッセージを開いている間は即既読登録する
+          if (currentUser && newMsg.sender_id !== currentUser.id) {
+            markAsRead();
           }
         }
       )
@@ -242,20 +308,20 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [roomId]);
+  }, [roomId, currentUser]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   // ============================
-  // 録音開始（MIMEタイプ自動判別 + 時間制限）
+  // 以下、録音・送信・UIロジック
   // ============================
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // ブラウザが対応しているMIMEタイプを判定
       let mimeType = "audio/webm";
       if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
         mimeType = "audio/webm;codecs=opus";
@@ -279,7 +345,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       };
 
       recorder.onstop = async () => {
-        // タイマー解除
         if (recordingTimerRef.current) {
           clearTimeout(recordingTimerRef.current);
           recordingTimerRef.current = null;
@@ -294,7 +359,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
           type: mimeTypeRef.current,
         });
 
-        // ファイルサイズ制限チェック
         if (audioBlob.size > MAX_AUDIO_FILE_SIZE_BYTES) {
           alert("ファイルサイズが大きすぎるため送信できませんでした。");
           stream.getTracks().forEach((track) => track.stop());
@@ -308,13 +372,12 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       recorder.start(1000);
       setIsRecording(true);
 
-      // 時間制限タイマー
       recordingTimerRef.current = setTimeout(() => {
         if (
           mediaRecorderRef.current &&
           mediaRecorderRef.current.state === "recording"
         ) {
-          stopRecording(); // 強制停止＆送信
+          stopRecording();
           alert("録音時間は最大60秒です");
         }
       }, MAX_RECORDING_TIME_MS);
@@ -324,11 +387,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // 録音停止 & 送信
-  // ============================
   const stopRecording = () => {
-    // タイマー解除
     if (recordingTimerRef.current) {
       clearTimeout(recordingTimerRef.current);
       recordingTimerRef.current = null;
@@ -340,11 +399,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // 録音キャンセル
-  // ============================
   const cancelRecording = () => {
-    // タイマー解除
     if (recordingTimerRef.current) {
       clearTimeout(recordingTimerRef.current);
       recordingTimerRef.current = null;
@@ -357,9 +412,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // 音声アップロード
-  // ============================
   const uploadAudio = async (audioBlob: Blob) => {
     if (!currentUser) return;
 
@@ -406,9 +458,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // メッセージ送信 (テキスト)
-  // ============================
   const handleSendMessage = async (text: string = inputText) => {
     if (!text.trim() || !currentUser) return;
     setInputText("");
@@ -437,9 +486,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // 画像送信処理
-  // ============================
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0 || !currentUser) return;
     const originalFile = e.target.files[0];
@@ -496,9 +542,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // メッセージ削除
-  // ============================
   const handleDeleteMessage = async (message: Message) => {
     if (!window.confirm("送信を取り消しますか？")) return;
 
@@ -551,9 +594,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // ヘッダーアクション
-  // ============================
   const handleHeaderClick = () => {
     if (currentRoom?.type === "group") {
       setIsMemberModalOpen(true);
@@ -630,7 +670,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                 isMe ? "chat-message-row-right" : "chat-message-row-left"
               }`}
             >
-              {/* メッセージ本文 */}
               <div
                 className={
                   isBot
@@ -651,7 +690,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                       alignItems: isMe ? "flex-end" : "flex-start",
                     }}
                   >
-                    {/* ★リンクがある場合はリンク付き画像、なければ通常画像 */}
                     {m.link_url ? (
                       <a
                         href={m.link_url}
@@ -665,7 +703,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                           style={{
                             maxWidth: "200px",
                             borderRadius: "10px",
-                            border: "2px solid #007aff", // リンク付きを視覚的に表現
+                            border: "2px solid #007aff",
                           }}
                         />
                       </a>
@@ -714,7 +752,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                 )}
               </div>
 
-              {/* 送信取り消しボタン */}
               {isMe && (
                 <button
                   onClick={() => handleDeleteMessage(m)}
@@ -745,7 +782,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Rich Menu */}
       {isStoreChat && currentRoom.partner && (
         <RichMenu storeId={currentRoom.partner.id} onSend={handleSendMessage} />
       )}
@@ -753,7 +789,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       {/* Input Area */}
       <div className="chat-input-bar">
         {isRecording ? (
-          /* 録音中のUI */
           <div
             style={{
               flex: 1,
@@ -803,7 +838,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
             </div>
           </div>
         ) : (
-          /* 通常時のUI */
           <>
             <input
               type="file"
@@ -840,7 +874,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
               </svg>
             </button>
 
-            {/* マイクボタン */}
             <button
               type="button"
               onClick={startRecording}
@@ -894,7 +927,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         )}
       </div>
 
-      {/* メンバー管理モーダル (変更なし) */}
+      {/* メンバー管理モーダル */}
       {isMemberModalOpen && (
         <div
           style={{
