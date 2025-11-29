@@ -30,6 +30,7 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
     if (!currentUser) return;
 
     const load = async () => {
+      // ★ここで上記で作った関数を呼び出す
       const data = await getConnectablePeople(currentUser.id);
       setCasts(data.casts);
       setUsersByCast(data.usersByCast);
@@ -39,11 +40,10 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
 
         if (room) {
           setGroupName(room.group_name || "");
-
+          // 自分自身を除外して選択状態にする
           const filtered = (room.member_ids ?? []).filter(
             (id: string) => id !== currentUser.id
           );
-
           setSelectedIds(new Set(filtered));
         }
       }
@@ -64,6 +64,9 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
   // Helpers
   // ----------------------------------------------------
   const toggleSelection = (id: string) => {
+    // 店舗(自分)のカードをクリックしても、自分は外せないので無視しても良いし
+    // 「選択済み」としてUI表示するためにトグルさせても良い。
+    // ここではそのままトグルさせ、保存時に強制的に自分を含める処理にします。
     const next = new Set(selectedIds);
     next.has(id) ? next.delete(id) : next.add(id);
     setSelectedIds(next);
@@ -81,7 +84,15 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
   const handleSave = async () => {
     if (!groupName.trim()) return alert("グループ名を入力してください");
 
-    const members = [...selectedIds, currentUser.id];
+    // ★修正: 重複を排除してメンバーリストを作成
+    // currentUser.id (作成者) は必ず含める
+    // selectedIds に currentUser.id が含まれていても Set で一意になる
+    const members = Array.from(new Set([...selectedIds, currentUser.id]));
+
+    if (members.length < 2) {
+      // 自分ひとりだけのグループを許可しない場合
+      // return alert("メンバーを1人以上選択してください");
+    }
 
     if (isEdit && roomId) {
       await updateGroupRoom(roomId, groupName, members);
@@ -126,7 +137,7 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
         />
       </div>
 
-      {/* Casts */}
+      {/* Casts & Users List */}
       <div className="group-section">
         <h3 className="group-section-title">キャスト & ユーザー</h3>
 
@@ -135,11 +146,16 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
           const isOpen = openCastIds.has(cast.id);
           const castSelected = selectedIds.has(cast.id);
 
+          // 店舗自身かどうか
+          const isMe = cast.id === currentUser.id;
+          // 表示上のロール名
+          const roleLabel = isMe ? "店舗(あなた)" : "キャスト";
+
           return (
             <div key={cast.id} className="group-cast-wrapper">
-              {/* 上段：キャストカード & ボタン（完全分離） */}
+              {/* 上段：キャスト(または店舗)カード */}
               <div className="group-cast-row">
-                {/* --- 左：キャストカード本体（選択） --- */}
+                {/* 左：カード本体 */}
                 <div
                   className={`group-cast-card ${
                     castSelected ? "group-cast-card-selected" : ""
@@ -150,15 +166,13 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
                     src={safeAvatar(cast.avatar_url)}
                     className="group-avatar"
                   />
-
-                  {/* 名前 + キャスト を縦並び */}
                   <div className="group-cast-text">
                     <div className="group-member-name">{cast.name}</div>
-                    <div className="group-role-cast">キャスト</div>
+                    <div className="group-role-cast">{roleLabel}</div>
                   </div>
                 </div>
 
-                {/* --- 右：矢印ボタン（完全分離） --- */}
+                {/* 右：開閉ボタン */}
                 <button
                   className="group-toggle-btn-outside"
                   onClick={(e) => {
@@ -170,11 +184,15 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
                 </button>
               </div>
 
-              {/* 下段：ユーザ一覧 */}
+              {/* 下段：そのキャストと友達のユーザー一覧 */}
               {isOpen && (
                 <div className="group-user-list animate-slideDown">
                   {castUsers.length === 0 ? (
-                    <div className="group-empty-text">ユーザーなし</div>
+                    <div className="group-empty-text">
+                      {isMe
+                        ? "友達のユーザーはいません"
+                        : "このキャストの友達はいません"}
+                    </div>
                   ) : (
                     castUsers.map((user) => (
                       <div

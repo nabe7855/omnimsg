@@ -66,35 +66,43 @@ export async function getConnectablePeople(userId: string): Promise<{
   // 店舗アカウント（store）
   // ===================================
   if (self.role === "store") {
-    // 自店舗のキャスト一覧
+    // 1. 自店舗のキャスト一覧を取得
     const { data: castRows } = await supabase
       .from("profiles")
       .select("*")
       .eq("store_id", self.id)
       .eq("role", "cast");
 
-    casts = rowsToProfiles(castRows);
+    const childCasts = rowsToProfiles(castRows);
 
-    for (const cast of casts) {
-      // キャストの友達ID
-      const friendIds = await getFriendIds(cast.id);
+    // 2. 「店舗自身(自分)」と「所属キャスト」をまとめてホスト一覧とする
+    // 先頭に自分を入れることで、UIの一番上に店舗が表示されます
+    const allHosts = [self, ...childCasts];
+
+    // 3. ホスト全員分（店舗 + キャスト）の友達を取得してマップを作る
+    for (const host of allHosts) {
+      // そのホストの友達IDを取得
+      const friendIds = await getFriendIds(host.id);
 
       if (friendIds.length === 0) {
-        usersByCast[cast.id] = [];
+        usersByCast[host.id] = [];
         continue;
       }
 
-      // 友達プロフィール
+      // 友達のプロフィールを取得
       const { data: userRows } = await supabase
         .from("profiles")
         .select("*")
         .in("id", friendIds)
+        // 必要ならここで .eq("role", "user") としても良いが、
+        // 友達であればキャスト同士でもグループに誘えるようにするなら制限なしでOK
         .eq("role", "user");
 
-      usersByCast[cast.id] = rowsToProfiles(userRows);
+      usersByCast[host.id] = rowsToProfiles(userRows);
     }
 
-    return { casts, usersByCast };
+    // UI側には `casts` という名前で渡すが、中身は 店舗+キャスト になっている
+    return { casts: allHosts, usersByCast };
   }
 
   // ===================================
