@@ -27,6 +27,14 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // 録音用ステートとRef
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const isCancelledRef = useRef(false);
+  // ★追加: 録音したファイル形式を覚えておく変数 (初期値: audio/webm)
+  const mimeTypeRef = useRef<string>("audio/webm");
+
   // メンバー管理用ステート
   const [memberProfiles, setMemberProfiles] = useState<Profile[]>([]);
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
@@ -237,6 +245,136 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [messages]);
 
   // ============================
+  // ★修正: 録音開始（MIMEタイプ自動判別）
+  // ============================
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // ブラウザが対応しているMIMEタイプを判定
+      let mimeType = "audio/webm";
+      if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+        mimeType = "audio/webm;codecs=opus"; // Chrome, Firefoxなど
+      } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+        mimeType = "audio/mp4"; // iPhone (Safari)
+      } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+        mimeType = "audio/ogg"; // その他
+      }
+
+      // 判定したタイプをRefに保存
+      mimeTypeRef.current = mimeType;
+
+      // オプションを指定してレコーダー作成
+      const recorder = new MediaRecorder(stream, { mimeType });
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      isCancelledRef.current = false;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        if (isCancelledRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        // 保存しておいた正しいMIMEタイプでBlobを作成
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: mimeTypeRef.current,
+        });
+        await uploadAudio(audioBlob);
+
+        stream.getTracks().forEach((track) => track.stop());
+      };
+
+      // 1秒ごとにデータを区切って保存（データ欠損防止）
+      recorder.start(1000);
+      setIsRecording(true);
+    } catch (err) {
+      console.error("マイクへのアクセスに失敗しました:", err);
+      alert("マイクの使用を許可してください");
+    }
+  };
+
+  // ============================
+  // 録音停止 & 送信
+  // ============================
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop(); // onstop発火 -> uploadAudio
+      setIsRecording(false);
+    }
+  };
+
+  // ============================
+  // 録音キャンセル
+  // ============================
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      isCancelledRef.current = true;
+      mediaRecorderRef.current.stop(); // onstop発火 -> フラグを見て中断
+      setIsRecording(false);
+    }
+  };
+
+  // ============================
+  // ★修正: 音声アップロード
+  // ============================
+  const uploadAudio = async (audioBlob: Blob) => {
+    if (!currentUser) return;
+
+    try {
+      // 拡張子をMIMEタイプに合わせて決定
+      const ext = mimeTypeRef.current.includes("mp4") ? "mp4" : "webm";
+      const fileName = `${Date.now()}-${Math.random()}.${ext}`;
+      const filePath = `${roomId}/${fileName}`;
+
+      // Storageにアップロード
+      // contentTypeを明示的に指定して、ブラウザや再生側が正しく認識できるようにする
+      const { error: uploadError } = await supabase.storage
+        .from("chat-images")
+        .upload(filePath, audioBlob, {
+          contentType: mimeTypeRef.current,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("chat-images").getPublicUrl(filePath);
+
+      // メッセージ送信
+      const { data: insertedMsg, error: insertError } = await supabase
+        .from("messages")
+        .insert([
+          {
+            room_id: roomId,
+            sender_id: currentUser.id,
+            content: publicUrl,
+            message_type: MessageType.AUDIO,
+          },
+        ])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+      if (insertedMsg) setMessages((prev) => [...prev, insertedMsg]);
+
+      await supabase
+        .from("rooms")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", roomId);
+    } catch (e) {
+      console.error("音声送信エラー:", e);
+      alert("音声の送信に失敗しました");
+    }
+  };
+
+  // ============================
   // メッセージ送信 (テキスト)
   // ============================
   const handleSendMessage = async (text: string = inputText) => {
@@ -327,41 +465,34 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   };
 
   // ============================
-  // ★修正: メッセージ削除（送信取り消し + Storage削除）
+  // メッセージ削除
   // ============================
   const handleDeleteMessage = async (message: Message) => {
     if (!window.confirm("送信を取り消しますか？")) return;
 
     try {
-      // 1. 画像タイプならStorageからファイルを削除
-      if (message.message_type === MessageType.IMAGE && message.content) {
-        // public URLからパスを抽出
-        // 例: .../chat-images/roomId/filename.jpg -> roomId/filename.jpg
+      if (
+        (message.message_type === MessageType.IMAGE ||
+          message.message_type === MessageType.AUDIO) &&
+        message.content
+      ) {
         const urlParts = message.content.split("/chat-images/");
-
         if (urlParts.length > 1) {
           const filePath = urlParts[1];
-          // ファイル削除実行
           const { error: storageError } = await supabase.storage
             .from("chat-images")
             .remove([filePath]);
-
-          if (storageError) {
+          if (storageError)
             console.error("Storage delete error:", storageError);
-            // Storage削除に失敗してもDB削除は続行する
-          }
         }
       }
 
-      // 2. DBからメッセージを削除
       const { error } = await supabase
         .from("messages")
         .delete()
         .eq("id", message.id);
 
       if (error) throw error;
-
-      // Realtimeの通知を待たず即時反映
       setMessages((prev) => prev.filter((m) => m.id !== message.id));
     } catch (e) {
       console.error("削除エラー:", e);
@@ -369,10 +500,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     }
   };
 
-  // ============================
-  // 画像ダウンロード
-  // ============================
-  const handleDownloadImage = async (url: string) => {
+  const handleDownloadFile = async (url: string, prefix = "file") => {
     try {
       const response = await fetch(url);
       const blob = await response.blob();
@@ -380,7 +508,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
 
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = `image-${Date.now()}.png`;
+      link.download = `${prefix}-${Date.now()}`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -461,6 +589,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
           const isMe = m.sender_id === currentUser.id;
           const isBot = m.message_type === MessageType.BOT_RESPONSE;
           const isImage = m.message_type === MessageType.IMAGE;
+          const isAudio = m.message_type === MessageType.AUDIO;
 
           return (
             <div
@@ -502,7 +631,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                       onClick={() => window.open(m.content, "_blank")}
                     />
                     <button
-                      onClick={() => handleDownloadImage(m.content)}
+                      onClick={() => handleDownloadFile(m.content, "image")}
                       style={{
                         marginTop: "4px",
                         fontSize: "11px",
@@ -516,6 +645,14 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                       保存
                     </button>
                   </div>
+                ) : isAudio ? (
+                  <div style={{ minWidth: "200px" }}>
+                    <audio
+                      controls
+                      src={m.content}
+                      style={{ width: "100%", height: "32px" }}
+                    />
+                  </div>
                 ) : (
                   <>
                     {isBot && <span className="bot-label">🤖 自動応答</span>}
@@ -524,10 +661,10 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                 )}
               </div>
 
-              {/* 送信取り消しボタン（引数をメッセージ全体に変更） */}
+              {/* 送信取り消しボタン */}
               {isMe && (
                 <button
-                  onClick={() => handleDeleteMessage(m)} // ★修正: オブジェクトごと渡す
+                  onClick={() => handleDeleteMessage(m)}
                   style={{
                     background: "none",
                     border: "none",
@@ -562,62 +699,146 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
 
       {/* Input Area */}
       <div className="chat-input-bar">
-        <input
-          type="file"
-          ref={fileInputRef}
-          style={{ display: "none" }}
-          accept="image/*"
-          onChange={handleImageSelect}
-        />
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          style={{
-            background: "none",
-            border: "none",
-            padding: "8px",
-            marginRight: "5px",
-            cursor: "pointer",
-            color: "#666",
-          }}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-            style={{ width: "24px", height: "24px" }}
+        {isRecording ? (
+          /* 録音中のUI */
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+            <span
+              style={{
+                color: "#ff4444",
+                fontWeight: "bold",
+                marginLeft: "10px",
+              }}
+            >
+              録音中...
+            </span>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={cancelRecording}
+                style={{
+                  background: "#ccc",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "20px",
+                  padding: "8px 16px",
+                  cursor: "pointer",
+                }}
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={stopRecording}
+                style={{
+                  background: "#6b46c1",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "20px",
+                  padding: "8px 16px",
+                  cursor: "pointer",
+                }}
+              >
+                送信
+              </button>
+            </div>
+          </div>
+        ) : (
+          /* 通常時のUI */
+          <>
+            <input
+              type="file"
+              ref={fileInputRef}
+              style={{ display: "none" }}
+              accept="image/*"
+              onChange={handleImageSelect}
             />
-          </svg>
-        </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "8px",
+                marginRight: "5px",
+                cursor: "pointer",
+                color: "#666",
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                style={{ width: "24px", height: "24px" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+                />
+              </svg>
+            </button>
 
-        <input
-          type="text"
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="メッセージを入力..."
-          className="chat-input-field"
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              handleSendMessage();
-            }
-          }}
-        />
-        <button
-          type="button"
-          onClick={() => handleSendMessage()}
-          disabled={!inputText.trim()}
-          className="chat-send-button"
-        >
-          送信
-        </button>
+            {/* マイクボタン */}
+            <button
+              type="button"
+              onClick={startRecording}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "8px",
+                marginRight: "5px",
+                cursor: "pointer",
+                color: "#666",
+              }}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                style={{ width: "24px", height: "24px" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z"
+                />
+              </svg>
+            </button>
+
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="メッセージを入力..."
+              className="chat-input-field"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => handleSendMessage()}
+              disabled={!inputText.trim()}
+              className="chat-send-button"
+            >
+              送信
+            </button>
+          </>
+        )}
       </div>
 
       {/* メンバー管理モーダル (変更なし) */}
