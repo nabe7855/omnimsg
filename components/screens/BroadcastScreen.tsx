@@ -3,6 +3,7 @@
 import {
   BroadcastTargets,
   getBroadcastTargets,
+  scheduleBroadcastMessage,
   sendBroadcastMessage,
 } from "@/lib/db/broadcast";
 import { supabase } from "@/lib/supabaseClient";
@@ -21,21 +22,18 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // ★追加: リンクURL用ステート
   const [linkUrl, setLinkUrl] = useState("");
+
+  // ★追加: 予約日時用ステート
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
 
   const [targets, setTargets] = useState<BroadcastTargets | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
-
-  // アコーディオン開閉状態 (キャストIDごとのboolean)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
-  // ==============================
-  // 初期ロード
-  // ==============================
   useEffect(() => {
     if (!currentUser) {
       navigate("/login");
@@ -49,22 +47,17 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
     load();
   }, [currentUser, navigate]);
 
-  // ==============================
-  // 選択ロジック
-  // ==============================
+  // 選択ロジック (省略せずそのまま使用)
   const toggleSelection = (id: string) => {
     const next = new Set(selectedIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedIds(next);
   };
-
-  // 全キャストを選択/解除
   const toggleAllCasts = () => {
     if (!targets) return;
     const allCastIds = targets.castGroups.map((g) => g.cast.id);
     const isAllSelected = allCastIds.every((id) => selectedIds.has(id));
-
     const next = new Set(selectedIds);
     allCastIds.forEach((id) => {
       if (isAllSelected) next.delete(id);
@@ -72,18 +65,13 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
     });
     setSelectedIds(next);
   };
-
-  // 全ユーザー(客)を選択/解除
   const toggleAllUsers = () => {
     if (!targets) return;
-    // 自分の直接の客 + 各キャストの客
     let allUserIds = targets.directUsers.map((u) => u.id);
     targets.castGroups.forEach((g) => {
       g.users.forEach((u) => allUserIds.push(u.id));
     });
-    // 重複排除
     allUserIds = Array.from(new Set(allUserIds));
-
     const isAllSelected = allUserIds.every((id) => selectedIds.has(id));
     const next = new Set(selectedIds);
     allUserIds.forEach((id) => {
@@ -92,16 +80,12 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
     });
     setSelectedIds(next);
   };
-
-  // 特定キャストに紐づくユーザーを全選択/解除
   const toggleGroupUsers = (castId: string) => {
     if (!targets) return;
     const group = targets.castGroups.find((g) => g.cast.id === castId);
     if (!group) return;
-
     const userIds = group.users.map((u) => u.id);
     const isAllSelected = userIds.every((id) => selectedIds.has(id));
-
     const next = new Set(selectedIds);
     userIds.forEach((id) => {
       if (isAllSelected) next.delete(id);
@@ -110,9 +94,6 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
     setSelectedIds(next);
   };
 
-  // ==============================
-  // 画像処理
-  // ==============================
   const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -128,61 +109,79 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
   };
 
   // ==============================
-  // 送信処理
+  // 送信・予約処理
   // ==============================
-  const handleSend = async () => {
+  const handleSendOrSchedule = async () => {
     if (selectedIds.size === 0) return alert("送信先を選択してください");
     if (!text && !imageFile)
       return alert("メッセージまたは画像を入力してください");
     if (!currentUser) return;
 
-    if (!window.confirm(`${selectedIds.size}人に一斉送信しますか？`)) return;
+    // 予約日時チェック
+    let scheduledAt: Date | null = null;
+    if (scheduledDate && scheduledTime) {
+      scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
+      if (scheduledAt < new Date()) {
+        return alert("未来の日時を指定してください");
+      }
+    } else if (scheduledDate || scheduledTime) {
+      return alert("日付と時間の両方を入力してください");
+    }
+
+    const actionName = scheduledAt ? "予約" : "送信";
+    if (!window.confirm(`${selectedIds.size}人に一斉${actionName}しますか？`))
+      return;
 
     setIsSending(true);
     try {
       let publicImageUrl = "";
-
-      // 画像アップロード
       if (imageFile) {
         const ext = imageFile.name.split(".").pop();
         const fileName = `broadcast/${Date.now()}-${Math.random()}.${ext}`;
         const { error: upErr } = await supabase.storage
           .from("chat-images")
           .upload(fileName, imageFile);
-
         if (upErr) throw upErr;
-
         const { data } = supabase.storage
           .from("chat-images")
           .getPublicUrl(fileName);
         publicImageUrl = data.publicUrl;
       }
 
-      // 送信実行 (linkUrlも渡す)
-      const count = await sendBroadcastMessage(
-        currentUser.id,
-        Array.from(selectedIds),
-        text,
-        publicImageUrl,
-        linkUrl // ★追加: リンクURLを渡す
-      );
+      if (scheduledAt) {
+        // ★予約処理
+        await scheduleBroadcastMessage(
+          currentUser.id,
+          Array.from(selectedIds),
+          text,
+          publicImageUrl,
+          linkUrl,
+          scheduledAt.toISOString()
+        );
+        alert("送信予約しました！");
+      } else {
+        // ★即時送信処理
+        const count = await sendBroadcastMessage(
+          currentUser.id,
+          Array.from(selectedIds),
+          text,
+          publicImageUrl,
+          linkUrl
+        );
+        alert(`${count}件 送信しました！`);
+      }
 
-      alert(`${count}件 送信しました！`);
       navigate("/talks");
     } catch (e) {
       console.error(e);
-      alert("送信中にエラーが発生しました");
+      alert(`${actionName}中にエラーが発生しました`);
     } finally {
       setIsSending(false);
     }
   };
 
-  // ==============================
-  // UI Render
-  // ==============================
   if (!currentUser || isLoading)
     return <div style={{ padding: 20 }}>読み込み中...</div>;
-
   const isStore = currentUser.role === UserRole.STORE;
 
   return (
@@ -202,27 +201,44 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
           borderBottom: "1px solid #eee",
           display: "flex",
           alignItems: "center",
+          justifyContent: "space-between",
         }}
       >
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <button
+            onClick={() => navigate("/talks")}
+            style={{
+              background: "none",
+              border: "none",
+              fontSize: "18px",
+              cursor: "pointer",
+              marginRight: "10px",
+            }}
+          >
+            ←
+          </button>
+          <h2 style={{ fontSize: "18px", margin: 0, fontWeight: "bold" }}>
+            一斉送信
+          </h2>
+        </div>
+        {/* ★予約一覧へのリンク */}
         <button
-          onClick={() => navigate("/talks")}
+          onClick={() => navigate("/broadcast/scheduled")}
           style={{
+            fontSize: "12px",
+            color: "#6b46c1",
             background: "none",
             border: "none",
-            fontSize: "18px",
             cursor: "pointer",
-            marginRight: "10px",
+            textDecoration: "underline",
           }}
         >
-          ←
+          予約一覧
         </button>
-        <h2 style={{ fontSize: "18px", margin: 0, fontWeight: "bold" }}>
-          一斉送信
-        </h2>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "15px" }}>
-        {/* --- ターゲット選択エリア --- */}
+        {/* ターゲット選択エリア (省略: 元のコードと同じ) */}
         <div
           style={{
             background: "white",
@@ -235,7 +251,7 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
           <h3 style={{ margin: "0 0 10px 0", fontSize: "16px" }}>
             送信先を選択 ({selectedIds.size}人)
           </h3>
-
+          {/* ... (ターゲット選択UIは元のコードと同じ) ... */}
           <div
             style={{
               display: "flex",
@@ -253,7 +269,6 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
               全お客様を選択
             </button>
           </div>
-
           <hr
             style={{
               border: "none",
@@ -261,8 +276,6 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
               margin: "10px 0",
             }}
           />
-
-          {/* 1. 直接の友達 */}
           {targets?.directUsers.length ? (
             <div style={{ marginBottom: "15px" }}>
               <div
@@ -284,8 +297,6 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
               ))}
             </div>
           ) : null}
-
-          {/* 2. 店舗用: キャストごとのグループ */}
           {isStore &&
             targets?.castGroups.map((group) => {
               const isOpen = openGroups[group.cast.id];
@@ -299,7 +310,6 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
                     overflow: "hidden",
                   }}
                 >
-                  {/* キャストヘッダー */}
                   <div
                     style={{
                       background: "#f0f0f5",
@@ -362,17 +372,15 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
                       </button>
                     </div>
                   </div>
-
-                  {/* キャストの客リスト */}
                   {isOpen && (
                     <div style={{ padding: "10px" }}>
-                      {group.users.length === 0 ? (
+                      {group.users.length === 0 && (
                         <p
                           style={{ fontSize: "12px", color: "#999", margin: 0 }}
                         >
                           お客様はいません
                         </p>
-                      ) : null}
+                      )}
                       {group.users.map((u) => (
                         <UserRow
                           key={u.id}
@@ -388,7 +396,7 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
             })}
         </div>
 
-        {/* --- メッセージ入力エリア --- */}
+        {/* メッセージ入力エリア */}
         <div
           style={{
             background: "white",
@@ -400,7 +408,6 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
           <h3 style={{ margin: "0 0 10px 0", fontSize: "16px" }}>
             メッセージ作成
           </h3>
-
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -457,7 +464,7 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
                     onClick={() => {
                       setImageFile(null);
                       setPreviewUrl(null);
-                      setLinkUrl(""); // リセット
+                      setLinkUrl("");
                     }}
                     style={{
                       position: "absolute",
@@ -479,8 +486,6 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
                     ×
                   </button>
                 </div>
-
-                {/* ★追加: 画像がある場合のみリンクURL入力欄を表示 */}
                 <div style={{ marginTop: "10px" }}>
                   <label
                     style={{
@@ -511,8 +516,79 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
             )}
           </div>
 
+          <hr
+            style={{
+              border: "none",
+              borderTop: "1px solid #eee",
+              margin: "20px 0",
+            }}
+          />
+
+          {/* ★予約日時設定エリア */}
+          <h3 style={{ margin: "0 0 10px 0", fontSize: "16px" }}>
+            送信日時の設定 (任意)
+          </h3>
+          <div style={{ display: "flex", gap: "10px", marginBottom: "20px" }}>
+            <div style={{ flex: 1 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  marginBottom: "5px",
+                  color: "#666",
+                }}
+              >
+                日付
+              </label>
+              <input
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  border: "1px solid #ddd",
+                  borderRadius: "5px",
+                }}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  marginBottom: "5px",
+                  color: "#666",
+                }}
+              >
+                時間
+              </label>
+              <input
+                type="time"
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  border: "1px solid #ddd",
+                  borderRadius: "5px",
+                }}
+              />
+            </div>
+          </div>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "#999",
+              marginTop: "-10px",
+              marginBottom: "20px",
+            }}
+          >
+            ※ 日時を設定しない場合は「即時送信」になります。
+          </p>
+
           <button
-            onClick={handleSend}
+            onClick={handleSendOrSchedule}
             disabled={isSending || selectedIds.size === 0}
             style={{
               width: "100%",
@@ -520,14 +596,22 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
               borderRadius: "8px",
               border: "none",
               background:
-                isSending || selectedIds.size === 0 ? "#ccc" : "#6b46c1",
+                isSending || selectedIds.size === 0
+                  ? "#ccc"
+                  : scheduledDate
+                  ? "#28a745"
+                  : "#6b46c1",
               color: "white",
               fontSize: "16px",
               fontWeight: "bold",
               cursor: "pointer",
             }}
           >
-            {isSending ? "送信中..." : "一斉送信する"}
+            {isSending
+              ? "処理中..."
+              : scheduledDate
+              ? "予約する"
+              : "一斉送信する"}
           </button>
         </div>
       </div>
@@ -535,7 +619,7 @@ export const BroadcastScreen: React.FC<ScreenProps> = ({
   );
 };
 
-// ヘルパーコンポーネント: ユーザー行
+// ... UserRow, btnStyle は同じなので省略
 const UserRow = ({
   user,
   isSelected,
@@ -574,7 +658,6 @@ const UserRow = ({
     <span style={{ fontSize: "14px" }}>{user.name}</span>
   </div>
 );
-
 const btnStyle: React.CSSProperties = {
   fontSize: "12px",
   padding: "6px 12px",

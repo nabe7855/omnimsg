@@ -198,3 +198,50 @@ export const sendBroadcastMessage = async (
 
   return successCount;
 };
+
+// ------------------------------------------
+// 予約送信処理
+// ------------------------------------------
+
+export const scheduleBroadcastMessage = async (
+  senderId: string,
+  targetUserIds: string[],
+  text: string,
+  imageUrl: string,
+  linkUrl: string,
+  scheduledAt: string // ISO string
+) => {
+  // 1. broadcast_messages テーブルに予約としてインサート
+  // (status: 'pending', scheduled_at: 設定日時)
+  const { data, error } = await supabase
+    .from("broadcast_messages")
+    .insert({
+      sender_id: senderId,
+      content: text,
+      image_url: imageUrl || null, // 空文字の場合はnullにする
+      link_url: linkUrl || null,
+      target_count: targetUserIds.length,
+      status: "pending", // 未送信
+      scheduled_at: scheduledAt, // 送信予定時刻
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // 2. 送信対象者を broadcast_recipients テーブルに保存
+  // (実際の送信時に誰に送るかを記録するため)
+  const targetData = targetUserIds.map((uid) => ({
+    broadcast_id: data.id,
+    user_id: uid,
+    status: "pending",
+  }));
+
+  const { error: targetError } = await supabase
+    .from("broadcast_recipients")
+    .insert(targetData);
+
+  if (targetError) throw targetError;
+
+  return targetUserIds.length;
+};
