@@ -1,7 +1,7 @@
 "use client";
 
 import { RichMenu } from "@/components/RichMenu";
-import { getConnectablePeople } from "@/lib/db/group"; // ★追加: グループ作成ロジックをインポート
+import { getConnectablePeople } from "@/lib/db/group";
 import { supabase } from "@/lib/supabaseClient";
 import {
   Message,
@@ -11,6 +11,7 @@ import {
   UserRole,
 } from "@/lib/types";
 import { ChatDetailProps } from "@/lib/types/screen";
+import imageCompression from "browser-image-compression";
 import React, { useEffect, useRef, useState } from "react";
 
 const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
@@ -24,13 +25,14 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // メンバー管理用のステート
+  // メンバー管理用ステート
   const [memberProfiles, setMemberProfiles] = useState<Profile[]>([]);
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
-  const [addCandidates, setAddCandidates] = useState<Profile[]>([]); // 追加候補
-  const [isAddingMode, setIsAddingMode] = useState(false); // 追加画面モードかどうか
-  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false); // 候補読み込み中
+  const [addCandidates, setAddCandidates] = useState<Profile[]>([]);
+  const [isAddingMode, setIsAddingMode] = useState(false);
+  const [isLoadingCandidates, setIsLoadingCandidates] = useState(false);
 
   // ============================
   // ログインチェック
@@ -46,7 +48,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     const loadRoomAndMembers = async () => {
       if (!currentUser) return;
 
-      // 1. ルーム情報の取得
       const { data: room, error } = await supabase
         .from("rooms")
         .select("*")
@@ -59,7 +60,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         return;
       }
 
-      // 2. メンバーIDの取得
       const { data: participants } = await supabase
         .from("room_participants")
         .select("user_id")
@@ -74,7 +74,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       const mIds = members ? members.map((m) => m.profile_id) : [];
       const allMemberIds = Array.from(new Set([...pIds, ...mIds]));
 
-      // 3. 全メンバーのプロフィール情報を取得
       if (allMemberIds.length > 0) {
         const { data: profiles } = await supabase
           .from("profiles")
@@ -110,41 +109,30 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [roomId, currentUser, navigate]);
 
   // ============================
-  // ★修正: 追加候補の取得（getConnectablePeopleを使用）
+  // 追加候補の取得
   // ============================
   const fetchAddCandidates = async () => {
     if (!currentUser || !currentRoom) return;
-
     setIsLoadingCandidates(true);
     try {
-      // 1. グループ作成と同じロジックで「関係のある全ユーザー」を取得
-      // (店舗自身、所属キャスト、それぞれの友達ユーザーが含まれる)
       const { casts, usersByCast } = await getConnectablePeople(currentUser.id);
-
-      // 2. データをフラットな配列に変換して重複を排除する
       const candidatesMap = new Map<string, Profile>();
 
-      // キャスト（店舗含む）を追加
       casts.forEach((cast) => {
         candidatesMap.set(cast.id, cast);
       });
-
-      // ユーザー（客）を追加
       Object.values(usersByCast).forEach((userList) => {
         userList.forEach((user) => {
           candidatesMap.set(user.id, user);
         });
       });
 
-      // 3. 既にルームにいるメンバーを除外
       const currentMemberIds = currentRoom.member_ids;
       currentMemberIds.forEach((existingId) => {
         if (candidatesMap.has(existingId)) {
           candidatesMap.delete(existingId);
         }
       });
-
-      // 4. 配列に戻してセット
       setAddCandidates(Array.from(candidatesMap.values()));
     } catch (e) {
       console.error("候補取得エラー:", e);
@@ -154,7 +142,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   };
 
   // ============================
-  // メンバー操作（追加・削除）
+  // メンバー追加・削除
   // ============================
   const handleAddMember = async (targetProfile: Profile) => {
     try {
@@ -162,18 +150,14 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         room_id: roomId,
         profile_id: targetProfile.id,
       });
-
       if (error) throw error;
-
       alert(`${targetProfile.name}さんを追加しました`);
-
       setMemberProfiles((prev) => [...prev, targetProfile]);
       setCurrentRoom((prev) =>
         prev
           ? { ...prev, member_ids: [...prev.member_ids, targetProfile.id] }
           : null
       );
-      // 追加した人を候補リストから消す
       setAddCandidates((prev) => prev.filter((p) => p.id !== targetProfile.id));
     } catch (e) {
       console.error("追加エラー:", e);
@@ -183,16 +167,13 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
 
   const handleRemoveMember = async (targetId: string) => {
     if (!window.confirm("本当に削除しますか？")) return;
-
     try {
       const { error } = await supabase
         .from("room_members")
         .delete()
         .eq("room_id", roomId)
         .eq("profile_id", targetId);
-
       if (error) throw error;
-
       setMemberProfiles((prev) => prev.filter((p) => p.id !== targetId));
       setCurrentRoom((prev) =>
         prev
@@ -218,7 +199,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         .select("*")
         .eq("room_id", roomId)
         .order("created_at", { ascending: true });
-
       if (data) setMessages(data);
     };
     loadMessages();
@@ -228,17 +208,21 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "messages",
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
-          const newMsg = payload.new as Message;
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
+          if (payload.eventType === "INSERT") {
+            const newMsg = payload.new as Message;
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
+          } else if (payload.eventType === "DELETE") {
+            setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
+          }
         }
       )
       .subscribe();
@@ -253,12 +237,11 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [messages]);
 
   // ============================
-  // メッセージ送信
+  // メッセージ送信 (テキスト)
   // ============================
   const handleSendMessage = async (text: string = inputText) => {
     if (!text.trim() || !currentUser) return;
     setInputText("");
-
     try {
       const { data: insertedMsg, error } = await supabase
         .from("messages")
@@ -272,10 +255,8 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         ])
         .select()
         .single();
-
       if (error) throw error;
       if (insertedMsg) setMessages((prev) => [...prev, insertedMsg]);
-
       await supabase
         .from("rooms")
         .update({ updated_at: new Date().toISOString() })
@@ -283,6 +264,130 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     } catch (e) {
       console.error("送信エラー:", e);
       setInputText(text);
+    }
+  };
+
+  // ============================
+  // 画像送信処理
+  // ============================
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0 || !currentUser) return;
+    const originalFile = e.target.files[0];
+
+    const options = {
+      maxSizeMB: 1,
+      maxWidthOrHeight: 1920,
+      useWebWorker: true,
+    };
+
+    try {
+      const compressedFile = await imageCompression(originalFile, options);
+      const fileExt = originalFile.name.split(".").pop();
+      const fileName = `${Date.now()}-${Math.random()}.${fileExt}`;
+      const filePath = `${roomId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("chat-images")
+        .upload(filePath, compressedFile);
+
+      if (uploadError) throw uploadError;
+
+      const {
+        data: { publicUrl },
+      } = supabase.storage.from("chat-images").getPublicUrl(filePath);
+
+      const { data: insertedMsg, error: insertError } = await supabase
+        .from("messages")
+        .insert([
+          {
+            room_id: roomId,
+            sender_id: currentUser.id,
+            content: publicUrl,
+            message_type: MessageType.IMAGE,
+          },
+        ])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+      if (insertedMsg) setMessages((prev) => [...prev, insertedMsg]);
+
+      await supabase
+        .from("rooms")
+        .update({ updated_at: new Date().toISOString() })
+        .eq("id", roomId);
+    } catch (e) {
+      console.error("画像送信エラー:", e);
+      alert("画像の送信に失敗しました");
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  // ============================
+  // ★修正: メッセージ削除（送信取り消し + Storage削除）
+  // ============================
+  const handleDeleteMessage = async (message: Message) => {
+    if (!window.confirm("送信を取り消しますか？")) return;
+
+    try {
+      // 1. 画像タイプならStorageからファイルを削除
+      if (message.message_type === MessageType.IMAGE && message.content) {
+        // public URLからパスを抽出
+        // 例: .../chat-images/roomId/filename.jpg -> roomId/filename.jpg
+        const urlParts = message.content.split("/chat-images/");
+
+        if (urlParts.length > 1) {
+          const filePath = urlParts[1];
+          // ファイル削除実行
+          const { error: storageError } = await supabase.storage
+            .from("chat-images")
+            .remove([filePath]);
+
+          if (storageError) {
+            console.error("Storage delete error:", storageError);
+            // Storage削除に失敗してもDB削除は続行する
+          }
+        }
+      }
+
+      // 2. DBからメッセージを削除
+      const { error } = await supabase
+        .from("messages")
+        .delete()
+        .eq("id", message.id);
+
+      if (error) throw error;
+
+      // Realtimeの通知を待たず即時反映
+      setMessages((prev) => prev.filter((m) => m.id !== message.id));
+    } catch (e) {
+      console.error("削除エラー:", e);
+      alert("削除できませんでした");
+    }
+  };
+
+  // ============================
+  // 画像ダウンロード
+  // ============================
+  const handleDownloadImage = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `image-${Date.now()}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      console.error("ダウンロードエラー:", e);
+      window.open(url, "_blank");
     }
   };
 
@@ -355,6 +460,8 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         {messages.map((m) => {
           const isMe = m.sender_id === currentUser.id;
           const isBot = m.message_type === MessageType.BOT_RESPONSE;
+          const isImage = m.message_type === MessageType.IMAGE;
+
           return (
             <div
               key={m.id}
@@ -362,6 +469,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                 isMe ? "chat-message-row-right" : "chat-message-row-left"
               }`}
             >
+              {/* メッセージ本文 */}
               <div
                 className={
                   isBot
@@ -370,9 +478,71 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                     ? "chat-bubble-me"
                     : "chat-bubble-other"
                 }
+                style={
+                  isImage ? { padding: "4px", background: "transparent" } : {}
+                }
               >
-                {m.content}
+                {isImage ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: isMe ? "flex-end" : "flex-start",
+                    }}
+                  >
+                    <img
+                      src={m.content}
+                      alt="画像"
+                      style={{
+                        maxWidth: "200px",
+                        borderRadius: "10px",
+                        border: "1px solid #ddd",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => window.open(m.content, "_blank")}
+                    />
+                    <button
+                      onClick={() => handleDownloadImage(m.content)}
+                      style={{
+                        marginTop: "4px",
+                        fontSize: "11px",
+                        color: "#007aff",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        textDecoration: "underline",
+                      }}
+                    >
+                      保存
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {isBot && <span className="bot-label">🤖 自動応答</span>}
+                    {m.content}
+                  </>
+                )}
               </div>
+
+              {/* 送信取り消しボタン（引数をメッセージ全体に変更） */}
+              {isMe && (
+                <button
+                  onClick={() => handleDeleteMessage(m)} // ★修正: オブジェクトごと渡す
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#999",
+                    marginLeft: "4px",
+                    cursor: "pointer",
+                    fontSize: "14px",
+                    alignSelf: "center",
+                  }}
+                  title="送信取り消し"
+                >
+                  ×
+                </button>
+              )}
+
               <span className="chat-timestamp">
                 {new Date(m.created_at).toLocaleTimeString([], {
                   hour: "2-digit",
@@ -390,8 +560,43 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         <RichMenu storeId={currentRoom.partner.id} onSend={handleSendMessage} />
       )}
 
-      {/* Input */}
+      {/* Input Area */}
       <div className="chat-input-bar">
+        <input
+          type="file"
+          ref={fileInputRef}
+          style={{ display: "none" }}
+          accept="image/*"
+          onChange={handleImageSelect}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          style={{
+            background: "none",
+            border: "none",
+            padding: "8px",
+            marginRight: "5px",
+            cursor: "pointer",
+            color: "#666",
+          }}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={1.5}
+            stroke="currentColor"
+            style={{ width: "24px", height: "24px" }}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z"
+            />
+          </svg>
+        </button>
+
         <input
           type="text"
           value={inputText}
@@ -415,7 +620,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         </button>
       </div>
 
-      {/* ★★★ メンバー管理モーダル ★★★ */}
+      {/* メンバー管理モーダル (変更なし) */}
       {isMemberModalOpen && (
         <div
           style={{
@@ -456,9 +661,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
               </h3>
               <button onClick={() => setIsMemberModalOpen(false)}>×</button>
             </div>
-
             {!isAddingMode ? (
-              // ▼▼ メンバー一覧モード ▼▼
               <>
                 <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
                   {memberProfiles.map((member) => (
@@ -492,8 +695,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                             : "お客様"}
                         </div>
                       </div>
-
-                      {/* 削除ボタン */}
                       {isOwner && member.id !== currentUser.id && (
                         <button
                           onClick={() => handleRemoveMember(member.id)}
@@ -512,7 +713,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                     </li>
                   ))}
                 </ul>
-
                 {isOwner && (
                   <button
                     onClick={() => {
@@ -534,64 +734,55 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                 )}
               </>
             ) : (
-              // ▼▼ メンバー追加モード ▼▼
               <>
                 {isLoadingCandidates ? (
                   <p style={{ textAlign: "center" }}>読み込み中...</p>
                 ) : (
                   <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                    {addCandidates.length === 0 ? (
-                      <p style={{ color: "#888", textAlign: "center" }}>
-                        追加できる候補がいません
-                      </p>
-                    ) : (
-                      addCandidates.map((candidate) => (
-                        <li
-                          key={candidate.id}
+                    {addCandidates.map((candidate) => (
+                      <li
+                        key={candidate.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          marginBottom: "10px",
+                          paddingBottom: "10px",
+                          borderBottom: "1px solid #eee",
+                        }}
+                      >
+                        <img
+                          src={candidate.avatar_url || PLACEHOLDER_AVATAR}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            marginBottom: "10px",
-                            paddingBottom: "10px",
-                            borderBottom: "1px solid #eee",
+                            width: "40px",
+                            height: "40px",
+                            borderRadius: "50%",
+                            objectFit: "cover",
+                            marginRight: "10px",
+                          }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: "bold" }}>
+                            {candidate.name}
+                          </div>
+                          <div style={{ fontSize: "12px", color: "#888" }}>
+                            {candidate.role === "cast" ? "キャスト" : "お客様"}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleAddMember(candidate)}
+                          style={{
+                            backgroundColor: "#6b46c1",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "5px",
+                            padding: "5px 10px",
+                            fontSize: "12px",
                           }}
                         >
-                          <img
-                            src={candidate.avatar_url || PLACEHOLDER_AVATAR}
-                            style={{
-                              width: "40px",
-                              height: "40px",
-                              borderRadius: "50%",
-                              objectFit: "cover",
-                              marginRight: "10px",
-                            }}
-                          />
-                          <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: "bold" }}>
-                              {candidate.name}
-                            </div>
-                            <div style={{ fontSize: "12px", color: "#888" }}>
-                              {candidate.role === "cast"
-                                ? "キャスト"
-                                : "お客様"}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => handleAddMember(candidate)}
-                            style={{
-                              backgroundColor: "#6b46c1",
-                              color: "white",
-                              border: "none",
-                              borderRadius: "5px",
-                              padding: "5px 10px",
-                              fontSize: "12px",
-                            }}
-                          >
-                            追加
-                          </button>
-                        </li>
-                      ))
-                    )}
+                          追加
+                        </button>
+                      </li>
+                    ))}
                   </ul>
                 )}
                 <button
