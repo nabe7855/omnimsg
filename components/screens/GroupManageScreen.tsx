@@ -1,54 +1,50 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { db } from "@/lib/mockSupabase";
+import { getConnectablePeople } from "@/lib/db/group";
+import { createGroupRoom, getRoomById, updateGroupRoom } from "@/lib/db/rooms";
+import "@/styles/group.css";
+
 import { Profile } from "@/lib/types";
 import { GroupManageProps } from "@/lib/types/screen";
-import { safeAvatar } from "@/lib/utils/avatar"; // ★ 追加！
+import { safeAvatar } from "@/lib/utils/avatar";
+import React, { useEffect, useState } from "react";
 
 export const GroupManageScreen: React.FC<GroupManageProps> = ({
   currentUser,
   navigate,
   roomId,
 }) => {
-  // ============================
-  // 認証チェック
-  // ============================
-  useEffect(() => {
-    if (!currentUser) {
-      navigate("/login");
-    }
-  }, [currentUser, navigate]);
-
-  if (!currentUser) return null; // 未ログインは何も描画しない
-
   const [groupName, setGroupName] = useState("");
   const [casts, setCasts] = useState<Profile[]>([]);
-  const [customers, setCustomers] = useState<Profile[]>([]);
+  const [usersByCast, setUsersByCast] = useState<Record<string, Profile[]>>({});
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [openCastIds, setOpenCastIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
   const isEdit = !!roomId;
 
-  // ============================
+  // ----------------------------------------------------
   // 初期ロード
-  // ============================
+  // ----------------------------------------------------
   useEffect(() => {
+    if (!currentUser) return;
+
     const load = async () => {
-      const data = await db.getConnectablePeople(currentUser.id);
+      const data = await getConnectablePeople(currentUser.id);
       setCasts(data.casts);
-      setCustomers(data.users);
+      setUsersByCast(data.usersByCast);
 
       if (isEdit && roomId) {
-        const room = await db.getRoomById(roomId);
+        const room = await getRoomById(roomId);
+
         if (room) {
           setGroupName(room.group_name || "");
 
-          // 自店舗は除外
-          const members = new Set(
-            room.member_ids.filter((id) => id !== currentUser.id)
+          const filtered = (room.member_ids ?? []).filter(
+            (id: string) => id !== currentUser.id
           );
-          setSelectedIds(members);
+
+          setSelectedIds(new Set(filtered));
         }
       }
 
@@ -58,53 +54,47 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
     load();
   }, [currentUser, roomId, isEdit]);
 
-  // ============================
-  // メンバー選択
-  // ============================
+  // ----------------------------------------------------
+  // Guard
+  // ----------------------------------------------------
+  if (!currentUser) return <div className="group-loading">ログイン中...</div>;
+  if (isLoading) return <div className="group-loading">読み込み中...</div>;
+
+  // ----------------------------------------------------
+  // Helpers
+  // ----------------------------------------------------
   const toggleSelection = (id: string) => {
     const next = new Set(selectedIds);
     next.has(id) ? next.delete(id) : next.add(id);
     setSelectedIds(next);
   };
 
-  // ============================
+  const toggleCastOpen = (id: string) => {
+    const next = new Set(openCastIds);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setOpenCastIds(next);
+  };
+
+  // ----------------------------------------------------
   // 保存
-  // ============================
+  // ----------------------------------------------------
   const handleSave = async () => {
     if (!groupName.trim()) return alert("グループ名を入力してください");
-    if (selectedIds.size === 0) return alert("メンバーを選択してください");
 
-    // ストア自身を自動追加
     const members = [...selectedIds, currentUser.id];
 
     if (isEdit && roomId) {
-      await db.updateGroup(roomId, groupName, members);
+      await updateGroupRoom(roomId, groupName, members);
       navigate(`/talk/${roomId}`);
     } else {
-      const newRoom = await db.createGroupRoom(
-        currentUser.id,
-        groupName,
-        members
-      );
+      const newRoom = await createGroupRoom(currentUser.id, groupName, members);
       navigate(`/talk/${newRoom.id}`);
     }
   };
 
-  // ============================
-  // 削除
-  // ============================
-  const handleDelete = async () => {
-    if (!roomId) return;
-    if (!window.confirm("本当に削除しますか？")) return;
-
-    await db.deleteRoom(roomId);
-    navigate("/talks");
-  };
-
-  if (isLoading) {
-    return <div className="group-loading">読み込み中...</div>;
-  }
-
+  // ----------------------------------------------------
+  // UI
+  // ----------------------------------------------------
   return (
     <div className="group-manage-screen">
       {/* Header */}
@@ -112,159 +102,108 @@ export const GroupManageScreen: React.FC<GroupManageProps> = ({
         <button
           onClick={() => navigate("/talks")}
           className="group-back-button"
-          type="button"
         >
-          <svg
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth={1.5}
-            stroke="currentColor"
-            className="icon-20"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15.75 19.5 8.25 12l7.5-7.5"
-            />
-          </svg>
-          <span className="group-back-label">戻る</span>
+          ← 戻る
         </button>
 
         <h2 className="group-title">
           {isEdit ? "グループ編集" : "グループ作成"}
         </h2>
 
-        <button onClick={handleSave} className="group-save-button" type="button">
+        <button className="group-save-button" onClick={handleSave}>
           {isEdit ? "完了" : "作成"}
         </button>
       </div>
 
-      {/* Body */}
-      <div className="group-body">
-        <div className="group-field">
-          <label className="input-label">グループ名</label>
-          <input
-            className="input-field"
-            value={groupName}
-            onChange={(e) => setGroupName(e.target.value)}
-            placeholder="例: 常連様グループ"
-          />
-        </div>
+      {/* Input */}
+      <div className="group-field">
+        <label className="input-label">グループ名</label>
+        <input
+          className="input-field"
+          value={groupName}
+          onChange={(e) => setGroupName(e.target.value)}
+          placeholder="例: 常連様グループ"
+        />
+      </div>
 
-        {/* Casts */}
-        {casts.length > 0 && (
-          <div className="group-section group-section-casts">
-            <h3 className="group-section-title">キャスト</h3>
+      {/* Casts */}
+      <div className="group-section">
+        <h3 className="group-section-title">キャスト & ユーザー</h3>
 
-            <div className="group-member-list">
-              {casts.map((cast) => (
+        {casts.map((cast) => {
+          const castUsers = usersByCast[cast.id] || [];
+          const isOpen = openCastIds.has(cast.id);
+          const castSelected = selectedIds.has(cast.id);
+
+          return (
+            <div key={cast.id} className="group-cast-wrapper">
+              {/* 上段：キャストカード & ボタン（完全分離） */}
+              <div className="group-cast-row">
+                {/* --- 左：キャストカード本体（選択） --- */}
                 <div
-                  key={cast.id}
+                  className={`group-cast-card ${
+                    castSelected ? "group-cast-card-selected" : ""
+                  }`}
                   onClick={() => toggleSelection(cast.id)}
-                  className={
-                    "user-card group-member-card " +
-                    (selectedIds.has(cast.id)
-                      ? "group-member-card-selected"
-                      : "")
-                  }
                 >
-                  <div className="group-member-main">
-                    <img
-                      src={safeAvatar(cast.avatar_url)}
-                      className="avatar group-member-avatar"
-                    />
-                    <div>
-                      <div className="group-member-name">{cast.name}</div>
-                      <div className="group-member-role group-member-role-cast">
-                        キャスト
-                      </div>
-                    </div>
-                  </div>
+                  <img
+                    src={safeAvatar(cast.avatar_url)}
+                    className="group-avatar"
+                  />
 
-                  {selectedIds.has(cast.id) && (
-                    <svg
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={2}
-                      stroke="currentColor"
-                      className="group-check-icon"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m4.5 12.75 6 6 9-13.5"
-                      />
-                    </svg>
+                  {/* 名前 + キャスト を縦並び */}
+                  <div className="group-cast-text">
+                    <div className="group-member-name">{cast.name}</div>
+                    <div className="group-role-cast">キャスト</div>
+                  </div>
+                </div>
+
+                {/* --- 右：矢印ボタン（完全分離） --- */}
+                <button
+                  className="group-toggle-btn-outside"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleCastOpen(cast.id);
+                  }}
+                >
+                  {isOpen ? "▲" : "▼"}
+                </button>
+              </div>
+
+              {/* 下段：ユーザ一覧 */}
+              {isOpen && (
+                <div className="group-user-list animate-slideDown">
+                  {castUsers.length === 0 ? (
+                    <div className="group-empty-text">ユーザーなし</div>
+                  ) : (
+                    castUsers.map((user) => (
+                      <div
+                        key={user.id}
+                        className={`group-user-card ${
+                          selectedIds.has(user.id)
+                            ? "group-user-card-selected"
+                            : ""
+                        }`}
+                        onClick={() => toggleSelection(user.id)}
+                      >
+                        <div className="group-user-info">
+                          <img
+                            src={safeAvatar(user.avatar_url)}
+                            className="group-avatar-sm"
+                          />
+                          <div>
+                            <div className="group-member-name">{user.name}</div>
+                            <div className="group-member-role">お客様</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
-              ))}
+              )}
             </div>
-          </div>
-        )}
-
-        {/* Customers */}
-        <div className="group-section group-section-users">
-          <h3 className="group-section-title">ユーザー</h3>
-
-          {customers.length === 0 ? (
-            <div className="group-empty-text">選択可能なユーザーがいません</div>
-          ) : (
-            <div className="group-member-list">
-              {customers.map((user) => (
-                <div
-                  key={user.id}
-                  onClick={() => toggleSelection(user.id)}
-                  className={
-                    "user-card group-member-card " +
-                    (selectedIds.has(user.id)
-                      ? "group-member-card-selected"
-                      : "")
-                  }
-                >
-                  <div className="group-member-main">
-                    <img
-                      src={safeAvatar(user.avatar_url)}
-                      className="avatar group-member-avatar"
-                    />
-                    <div>
-                      <div className="group-member-name">{user.name}</div>
-                      <div className="group-member-role group-member-role-user">
-                        お客様
-                      </div>
-                    </div>
-                  </div>
-
-                  {selectedIds.has(user.id) && (
-                    <svg
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={2}
-                      stroke="currentColor"
-                      className="group-check-icon"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m4.5 12.75 6 6 9-13.5"
-                      />
-                    </svg>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Delete */}
-        {isEdit && (
-          <button
-            onClick={handleDelete}
-            className="group-delete-button"
-            type="button"
-          >
-            グループを削除して退出
-          </button>
-        )}
+          );
+        })}
       </div>
     </div>
   );

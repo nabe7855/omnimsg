@@ -1,3 +1,4 @@
+// 🔽 新規グループ作成ボタン 追加バージョン
 "use client";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -19,7 +20,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
 
   // -----------------------------
-  // 🔒 安全な navigate
+  // 🔒 安全 navigate
   // -----------------------------
   const safeNavigate = useCallback(
     (path: string) => {
@@ -34,7 +35,6 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   const fetchCasts = useCallback(async () => {
     if (!currentUser || currentUser.role !== UserRole.STORE) return;
 
-    // 自分の store_id を持つキャストを取得
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
@@ -46,9 +46,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
       return;
     }
 
-    if (data) {
-      setMyCasts(data as Profile[]);
-    }
+    if (data) setMyCasts(data as Profile[]);
   }, [currentUser]);
 
   useEffect(() => {
@@ -56,7 +54,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   }, [fetchCasts]);
 
   // -----------------------------
-  // 2. キャスト作成 (修正版)
+  // 2. キャスト作成
   // -----------------------------
   const handleCreate = async () => {
     if (!newName || !newEmail || !newPass) {
@@ -68,21 +66,18 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
     setIsProcessing(true);
 
     try {
-      // ★重要修正: セッションを保存しない設定で一時クライアントを作成
-      // これにより、メインの店舗ログイン状態が維持されます
       const tempSupabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
           auth: {
-            persistSession: false, // ローカルストレージを使わない
-            autoRefreshToken: false, // トークン更新もしない
-            detectSessionInUrl: false, // URLからも読み取らない
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
           },
         }
       );
 
-      // ① 一時クライアントで新規登録
       const { data: authData, error: authError } =
         await tempSupabase.auth.signUp({
           email: newEmail,
@@ -99,7 +94,6 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
       const newUser = authData.user;
       if (!newUser) throw new Error("ユーザー作成に失敗しました");
 
-      // ② プロフィールを作成
       const displayId = newUser.id.slice(0, 8);
 
       const { error: profileError } = await tempSupabase
@@ -119,9 +113,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
 
       if (profileError) throw profileError;
 
-      // ③ 作成完了後、リストを再読み込みして画面に反映
       await fetchCasts();
-
       closeModal();
       alert(`キャスト「${newName}」を作成しました！`);
     } catch (e: any) {
@@ -136,13 +128,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   // 3. キャスト削除
   // -----------------------------
   const handleDelete = async (castId: string) => {
-    if (
-      !window.confirm(
-        "このキャストをリストから削除しますか？\n（注: データベースのProfileのみ削除されます）"
-      )
-    ) {
-      return;
-    }
+    if (!window.confirm("このキャストを削除してもよいですか？")) return;
 
     try {
       const { error } = await supabase
@@ -166,22 +152,33 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   };
 
   if (!currentUser) {
-    return <div className="cast-mgmt-loading-message">読み込み中...</div>;
+    return <div className="loading">読み込み中...</div>;
   }
 
   return (
     <div className="cast-mgmt-screen">
       <div className="cast-mgmt-header">
         <h2 className="heading-xl cast-mgmt-title">キャスト管理</h2>
+
+        {/* 追加: グループ作成ボタン */}
+        <button
+          type="button"
+          onClick={() => safeNavigate("/group/create")}
+          className="btn-secondary"
+        >
+          ＋ グループ作成
+        </button>
+
         <button
           type="button"
           onClick={() => setIsModalOpen(true)}
           className="btn-primary cast-mgmt-add-button"
         >
-          新規追加
+          ＋ キャスト追加
         </button>
       </div>
 
+      {/* キャスト一覧 */}
       <div className="cast-mgmt-list">
         {myCasts.map((c) => (
           <div
@@ -194,20 +191,14 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                 src={c.avatar_url || "/placeholder-avatar.png"}
                 className="cast-mgmt-avatar"
                 alt={c.name}
-                onError={(e) =>
-                  ((e.target as HTMLImageElement).src =
-                    "/placeholder-avatar.png")
-                }
               />
               <div>
                 <div className="cast-mgmt-name">{c.name}</div>
                 <div className="cast-mgmt-id">ID: {c.display_id}</div>
               </div>
             </div>
-
             <div className="cast-mgmt-card-right">
               <div className="cast-mgmt-status-label">有効</div>
-
               <button
                 type="button"
                 onClick={(e) => {
@@ -234,61 +225,38 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
         <div className="cast-mgmt-modal-backdrop">
           <div className="cast-mgmt-modal">
             <h3 className="cast-mgmt-modal-title">キャスト新規登録</h3>
-            <p className="cast-mgmt-modal-desc">
-              キャスト用のログインIDとパスワードを発行します。
-            </p>
 
-            <div className="cast-mgmt-modal-fields">
-              <div className="input-group">
-                <label className="input-label">名前</label>
-                <input
-                  className="input-field"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="例: さくら"
-                />
-              </div>
+            <div className="input-group">
+              <label>名前</label>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
+            </div>
 
-              <div className="input-group">
-                <label className="input-label">
-                  メールアドレス (ログインID)
-                </label>
-                <input
-                  className="input-field"
-                  value={newEmail}
-                  onChange={(e) => setNewEmail(e.target.value)}
-                  placeholder="cast@example.com"
-                />
-              </div>
+            <div className="input-group">
+              <label>メールアドレス</label>
+              <input
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+              />
+            </div>
 
-              <div className="input-group">
-                <label className="input-label">パスワード</label>
-                <input
-                  className="input-field"
-                  type="password"
-                  value={newPass}
-                  onChange={(e) => setNewPass(e.target.value)}
-                  placeholder="8文字以上"
-                />
-              </div>
+            <div className="input-group">
+              <label>パスワード</label>
+              <input
+                type="password"
+                value={newPass}
+                onChange={(e) => setNewPass(e.target.value)}
+              />
             </div>
 
             <div className="cast-mgmt-modal-actions">
-              <button
-                type="button"
-                onClick={closeModal}
-                disabled={isProcessing}
-                className="btn-secondary cast-mgmt-modal-button"
-              >
+              <button onClick={closeModal} className="btn-secondary">
                 キャンセル
               </button>
-              <button
-                type="button"
-                onClick={handleCreate}
-                disabled={isProcessing}
-                className="btn-primary cast-mgmt-modal-button"
-              >
-                {isProcessing ? "作成中..." : "作成"}
+              <button onClick={handleCreate} className="btn-primary">
+                作成
               </button>
             </div>
           </div>

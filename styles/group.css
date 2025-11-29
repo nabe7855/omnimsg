@@ -1,0 +1,235 @@
+/* ============================
+   Group Manage Screen Base
+============================ */
+.group-manage-screen {
+  padding: 16px;
+  background: #ffffff;
+  min-height: 100vh;
+}
+
+/* Loading Text */
+.group-loading {
+  padding: 24px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+/* ============================
+   Header
+============================ */
+.group-manage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.group-back-button {
+  border: none;
+  background: none;
+  color: #6b7280;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.group-title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.group-save-button {
+  border: none;
+  background: #6366f1;
+  color: #fff;
+  padding: 6px 16px;
+  border-radius: 9999px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.group-save-button:hover {
+  opacity: 0.85;
+}
+
+/* ============================
+   Input Field
+============================ */
+.group-field {
+  margin-top: 12px;
+  margin-bottom: 20px;
+}
+
+.input-label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+}
+
+.input-field {
+  width: 100%;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  padding: 10px 14px;
+  font-size: 14px;
+  background: #f9fafb;
+}
+
+/* ============================
+   Cast Section
+============================ */
+.group-section {
+  margin-top: 24px;
+}
+
+.group-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 12px;
+}
+
+/* Wrapper for each cast block */
+.group-cast-wrapper {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+/* ============================
+   Cast Card (Separated Layout)
+============================ */
+.group-cast-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e5e7eb;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+/* 左側：キャストカード本体 */
+.group-cast-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1; /* 左側が自動的に最大幅を取る */
+  cursor: pointer;
+}
+
+/* 右側：ボタン専用エリア（固定幅） */
+.group-cast-right {
+  width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 左右分離の状態でキャスト選択時 */
+.group-cast-card-selected {
+  background: #fff0f7;
+  border-color: #f472b6;
+}
+
+/* Cast info */
+.group-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 9999px;
+  object-fit: cover;
+  background: #fee2e2;
+}
+
+.group-member-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.group-member-role {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.group-role-cast {
+  color: #ec4899;
+  font-weight: 500;
+}
+
+/* ▼ / ▲ Button */
+.group-toggle-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 18px;
+  padding: 4px;
+}
+
+/* ============================
+   User List Under Cast
+============================ */
+.group-user-list {
+  margin-top: 8px;
+  margin-left: 52px;
+  animation: slideDown 0.2s ease-out;
+}
+
+.group-user-card {
+  background: #f9fafb;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-user-card:hover {
+  background: #f3f4f6;
+}
+
+/* ユーザー選択時（キャストと差別化） */
+.group-user-card-selected {
+  background: #eef2ff;
+  border-left: 3px solid #6366f1;
+}
+
+/* user info */
+.group-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.group-avatar-sm {
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  object-fit: cover;
+}
+
+/* empty text */
+.group-empty-text {
+  font-size: 12px;
+  color: #9ca3af;
+  padding: 6px;
+}
+
+/* Slide animation */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

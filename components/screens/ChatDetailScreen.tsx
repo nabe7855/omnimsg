@@ -32,12 +32,13 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [currentUser, navigate]);
 
   // ============================
-  // ルーム情報読み込み
+  // ルーム情報読み込み（★修正1：ハイブリッド対応）
   // ============================
   useEffect(() => {
     const loadRoom = async () => {
       if (!currentUser) return;
 
+      // 1. ルーム情報の取得
       const { data: room, error } = await supabase
         .from("rooms")
         .select("*")
@@ -50,34 +51,56 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         return;
       }
 
-      // 参加者情報の取得
+      // 2. メンバー情報の取得（新旧両方のテーブルを確認）
+      // 古いDMテーブル
       const { data: participants } = await supabase
         .from("room_participants")
         .select("user_id")
         .eq("room_id", roomId);
 
+      // 新しいグループ/DMテーブル
+      const { data: members } = await supabase
+        .from("room_members")
+        .select("profile_id")
+        .eq("room_id", roomId);
+
       let partner: Profile | undefined = undefined;
 
-      if (room.type === "dm" && participants) {
-        const partnerObj = participants.find((p) => p.user_id !== currentUser.id);
+      // DMの場合、相手（パートナー）を特定する
+      if (room.type === "dm") {
+        // 古いテーブルから相手を探す
+        let partnerId = participants?.find(
+          (p) => p.user_id !== currentUser.id
+        )?.user_id;
 
-        if (partnerObj) {
+        // 見つからなければ新しいテーブルから探す
+        if (!partnerId) {
+          partnerId = members?.find(
+            (m) => m.profile_id !== currentUser.id
+          )?.profile_id;
+        }
+
+        // IDが見つかればプロフィールを取得
+        if (partnerId) {
           const { data: pData } = await supabase
             .from("profiles")
             .select("*")
-            .eq("id", partnerObj.user_id)
+            .eq("id", partnerId)
             .single();
 
           if (pData) partner = pData;
         }
       }
 
-      const memberIds = participants ? participants.map((p) => p.user_id) : [];
+      // メンバーIDリストを作成（新旧をマージして重複排除）
+      const pIds = participants ? participants.map((p) => p.user_id) : [];
+      const mIds = members ? members.map((m) => m.profile_id) : [];
+      const allMemberIds = Array.from(new Set([...pIds, ...mIds]));
 
       setCurrentRoom({
         ...room,
         partner,
-        member_ids: memberIds,
+        member_ids: allMemberIds,
       });
     };
 
@@ -85,7 +108,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [roomId, currentUser, navigate]);
 
   // ============================
-  // メッセージ読み込み + Realtime
+  // メッセージ読み込み + Realtime（★修正2：重複排除）
   // ============================
   useEffect(() => {
     const loadMessages = async () => {
@@ -113,7 +136,13 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         },
         (payload) => {
           const newMsg = payload.new as Message;
-          setMessages((prev) => [...prev, newMsg]);
+          // 既に表示されているメッセージ（自分で送信して即時反映したものなど）は除外して追加
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newMsg.id)) {
+              return prev;
+            }
+            return [...prev, newMsg];
+          });
         }
       )
       .subscribe();
@@ -131,18 +160,14 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [messages]);
 
   // ============================
-  // ★ 既読処理（入室 & 新着）
+  // 既読処理
   // ============================
   useEffect(() => {
     if (!currentUser || messages.length === 0) return;
 
     const markAsRead = async () => {
       try {
-        // 未読 = 自分以外が送ったメッセージ
-        const unread = messages.filter(
-          (m) => m.sender_id !== currentUser.id
-        );
-
+        const unread = messages.filter((m) => m.sender_id !== currentUser.id);
         if (unread.length === 0) return;
 
         const rows = unread.map((m) => ({
@@ -150,7 +175,6 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
           user_id: currentUser.id,
         }));
 
-        // ★★ 409 Conflict 防止（unique 必須）
         await supabase.from("message_reads").upsert(rows, {
           onConflict: "message_id,user_id",
           ignoreDuplicates: true,
@@ -164,24 +188,37 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   }, [messages, currentUser]);
 
   // ============================
-  // メッセージ送信
+  // メッセージ送信（★修正2：即時反映処理を追加）
   // ============================
   const handleSendMessage = async (text: string = inputText) => {
     if (!text.trim() || !currentUser) return;
 
+    // 入力欄をクリア（UIのレスポンス向上）
+    setInputText("");
+
     try {
-      await supabase.from("messages").insert([
-        {
-          room_id: roomId,
-          sender_id: currentUser.id,
-          content: text,
-          message_type: MessageType.TEXT,
-        },
-      ]);
+      // 1. DBに挿入し、その結果（生成されたIDや時刻など）を取得する (.select().single() を追加)
+      const { data: insertedMsg, error } = await supabase
+        .from("messages")
+        .insert([
+          {
+            room_id: roomId,
+            sender_id: currentUser.id,
+            content: text,
+            message_type: MessageType.TEXT,
+          },
+        ])
+        .select()
+        .single();
 
-      setInputText("");
+      if (error) throw error;
 
-      // ルーム更新
+      // 2. 成功したら、Realtimeの通知を待たずに手動でリストに追加する
+      if (insertedMsg) {
+        setMessages((prev) => [...prev, insertedMsg]);
+      }
+
+      // ルームの更新日時を更新
       await supabase
         .from("rooms")
         .update({ updated_at: new Date().toISOString() })
@@ -189,6 +226,8 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     } catch (e) {
       console.error("送信エラー:", e);
       alert("送信に失敗しました");
+      // エラー時は入力したテキストを戻すなどの配慮があっても良い
+      setInputText(text);
     }
   };
 
@@ -202,8 +241,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   };
 
   if (!currentUser) return null;
-  if (!currentRoom)
-    return <div className="chat-loading">読み込み中...</div>;
+  if (!currentRoom) return <div className="chat-loading">読み込み中...</div>;
 
   const isStoreChat =
     currentRoom.type === "dm" &&
@@ -293,10 +331,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
 
       {/* Rich Menu */}
       {isStoreChat && currentRoom.partner && (
-        <RichMenu
-          storeId={currentRoom.partner.id}
-          onSend={handleSendMessage}
-        />
+        <RichMenu storeId={currentRoom.partner.id} onSend={handleSendMessage} />
       )}
 
       {/* Input */}

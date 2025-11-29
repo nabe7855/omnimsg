@@ -55,6 +55,7 @@ export default function RootLayout({
 
     if (role === "cast") {
       return [
+        { id: "/home", label: "ホーム", icon: "🏠" },
         { id: "/talks", label: "トーク", icon: "💬" },
         { id: "/profile", label: "マイページ", icon: "👤" },
       ];
