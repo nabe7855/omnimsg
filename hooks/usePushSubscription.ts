@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useEffect, useState } from "react";
 
 // 手順1で生成した Public Key をここに入れる
-const VAPID_PUBLIC_KEY = "あなたのPublic_Keyをここに貼り付け";
+const VAPID_PUBLIC_KEY = "BHkhTie--LUg94VLJH_PFnbPQ-ate0KmThPOPfDhjz1Sdies6r_4WqQ1SaU5P6S0jqT72cqxdc7_MiiSu5RYnko";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
