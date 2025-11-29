@@ -663,6 +663,11 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
           const isImage = m.message_type === MessageType.IMAGE;
           const isAudio = m.message_type === MessageType.AUDIO;
 
+          // ★追加: メッセージ送信者のプロフィールを取得
+          const senderProfile = memberProfiles.find(
+            (p) => p.id === m.sender_id
+          );
+
           return (
             <div
               key={m.id}
@@ -670,86 +675,110 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
                 isMe ? "chat-message-row-right" : "chat-message-row-left"
               }`}
             >
+              {/* メッセージ本文のラッパー（名前と吹き出しを縦に積むため） */}
               <div
-                className={
-                  isBot
-                    ? "chat-bubble-bot"
-                    : isMe
-                    ? "chat-bubble-me"
-                    : "chat-bubble-other"
-                }
-                style={
-                  isImage ? { padding: "4px", background: "transparent" } : {}
-                }
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: isMe ? "flex-end" : "flex-start",
+                  maxWidth: "80%",
+                }}
               >
-                {isImage ? (
-                  <div
+                {/* ★追加: グループチャットかつ自分以外の場合、名前を表示 */}
+                {!isMe && currentRoom.type === "group" && (
+                  <span
                     style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: isMe ? "flex-end" : "flex-start",
+                      fontSize: "12px",
+                      color: "#555",
+                      marginBottom: "2px",
+                      marginLeft: "4px",
                     }}
                   >
-                    {m.link_url ? (
-                      <a
-                        href={m.link_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ display: "block", cursor: "pointer" }}
-                      >
+                    {senderProfile ? senderProfile.name : "メンバー"}
+                  </span>
+                )}
+
+                <div
+                  className={
+                    isBot
+                      ? "chat-bubble-bot"
+                      : isMe
+                      ? "chat-bubble-me"
+                      : "chat-bubble-other"
+                  }
+                  style={
+                    isImage ? { padding: "4px", background: "transparent" } : {}
+                  }
+                >
+                  {isImage ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: isMe ? "flex-end" : "flex-start",
+                      }}
+                    >
+                      {m.link_url ? (
+                        <a
+                          href={m.link_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ display: "block", cursor: "pointer" }}
+                        >
+                          <img
+                            src={m.content}
+                            alt="画像"
+                            style={{
+                              maxWidth: "200px",
+                              borderRadius: "10px",
+                              border: "2px solid #007aff",
+                            }}
+                          />
+                        </a>
+                      ) : (
                         <img
                           src={m.content}
                           alt="画像"
                           style={{
                             maxWidth: "200px",
                             borderRadius: "10px",
-                            border: "2px solid #007aff",
+                            border: "1px solid #ddd",
+                            cursor: "pointer",
                           }}
+                          onClick={() => window.open(m.content, "_blank")}
                         />
-                      </a>
-                    ) : (
-                      <img
-                        src={m.content}
-                        alt="画像"
-                        style={{
-                          maxWidth: "200px",
-                          borderRadius: "10px",
-                          border: "1px solid #ddd",
-                          cursor: "pointer",
-                        }}
-                        onClick={() => window.open(m.content, "_blank")}
-                      />
-                    )}
+                      )}
 
-                    <button
-                      onClick={() => handleDownloadFile(m.content, "image")}
-                      style={{
-                        marginTop: "4px",
-                        fontSize: "11px",
-                        color: "#007aff",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      保存
-                    </button>
-                  </div>
-                ) : isAudio ? (
-                  <div style={{ minWidth: "200px" }}>
-                    <audio
-                      controls
-                      src={m.content}
-                      style={{ width: "100%", height: "32px" }}
-                    />
-                  </div>
-                ) : (
-                  <>
-                    {isBot && <span className="bot-label">🤖 自動応答</span>}
-                    {m.content}
-                  </>
-                )}
+                      <button
+                        onClick={() => handleDownloadFile(m.content, "image")}
+                        style={{
+                          marginTop: "4px",
+                          fontSize: "11px",
+                          color: "#007aff",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                        }}
+                      >
+                        保存
+                      </button>
+                    </div>
+                  ) : isAudio ? (
+                    <div style={{ minWidth: "200px" }}>
+                      <audio
+                        controls
+                        src={m.content}
+                        style={{ width: "100%", height: "32px" }}
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      {isBot && <span className="bot-label">🤖 自動応答</span>}
+                      {m.content}
+                    </>
+                  )}
+                </div>
               </div>
 
               {isMe && (
