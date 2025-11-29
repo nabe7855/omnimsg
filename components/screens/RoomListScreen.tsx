@@ -1,7 +1,13 @@
 "use client";
 
 import { supabase } from "@/lib/supabaseClient";
-import { Profile, RoomWithPartner, UserRole } from "@/lib/types";
+import {
+  Message,
+  MessageType,
+  Profile,
+  RoomWithPartner,
+  UserRole,
+} from "@/lib/types"; // Message, MessageTypeを追加
 import { ScreenProps } from "@/lib/types/screen";
 import "@/styles/RoomList.css";
 import React, { useEffect, useState } from "react";
@@ -18,6 +24,12 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
   const [rooms, setRooms] = useState<RoomWithPartner[]>([]);
   const [friendIds, setFriendIds] = useState<string[]>([]);
   const [unreadMap, setUnreadMap] = useState<Map<string, number>>(new Map());
+
+  // ★追加: 各ルームの最新メッセージを保持するMap
+  const [latestMessages, setLatestMessages] = useState<
+    Map<string, Message | null>
+  >(new Map());
+
   const [tab, setTab] = useState<RoomTab>("friends");
   const [loading, setLoading] = useState(true);
 
@@ -69,7 +81,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
     fetchUnreadCount();
   }, [currentUser]);
 
-  /* ▼ ルーム取得（ハイブリッド対応版） */
+  /* ▼ ルーム取得（ハイブリッド対応版 + 最新メッセージ取得） */
   useEffect(() => {
     const fetchRooms = async () => {
       if (!currentUser) return;
@@ -110,66 +122,87 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
 
         const result: RoomWithPartner[] = [];
 
-        for (const room of roomsData || []) {
-          // ==============================
-          // パターンA: グループの場合
-          // ==============================
-          if (room.type === "group") {
-            // グループはパートナー不要なのでそのまま追加
-            result.push({ ...room, partner: undefined });
-            continue;
-          }
+        // ★追加: 最新メッセージ取得用のMap準備
+        const messageMap = new Map<string, Message | null>();
 
-          // ==============================
-          // パターンB: DMの場合 (相手を探す)
-          // ==============================
-          let partner: Profile | undefined = undefined;
+        // 並行処理でルーム処理とメッセージ取得を行う
+        await Promise.all(
+          (roomsData || []).map(async (room) => {
+            // ★追加: 各ルームの最新メッセージを1件取得
+            const { data: lastMsg } = await supabase
+              .from("messages")
+              .select("*")
+              .eq("room_id", room.id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle(); // 0件の場合はnullになる
 
-          // まず古いテーブル (room_participants) で相手を探す (既存DM対応)
-          const { data: participants } = await supabase
-            .from("room_participants")
-            .select("user_id")
-            .eq("room_id", room.id);
+            messageMap.set(room.id, lastMsg);
 
-          if (participants && participants.length > 0) {
-            const partnerObj = participants.find(
-              (p) => p.user_id !== currentUser.id
-            );
-            if (partnerObj) {
-              const { data: pData } = await supabase
-                .from("profiles")
-                .select("*")
-                .eq("id", partnerObj.user_id)
-                .single();
-              partner = pData || undefined;
+            // ==============================
+            // パターンA: グループの場合
+            // ==============================
+            if (room.type === "group") {
+              result.push({ ...room, partner: undefined });
+              return;
             }
-          } else {
-            // もし古いテーブルになければ、新しいテーブル (room_members) も探す (念の為)
-            const { data: members } = await supabase
-              .from("room_members")
-              .select("profile_id")
+
+            // ==============================
+            // パターンB: DMの場合 (相手を探す)
+            // ==============================
+            let partner: Profile | undefined = undefined;
+
+            const { data: participants } = await supabase
+              .from("room_participants")
+              .select("user_id")
               .eq("room_id", room.id);
 
-            if (members) {
-              const partnerObj = members.find(
-                (p) => p.profile_id !== currentUser.id
+            if (participants && participants.length > 0) {
+              const partnerObj = participants.find(
+                (p) => p.user_id !== currentUser.id
               );
               if (partnerObj) {
                 const { data: pData } = await supabase
                   .from("profiles")
                   .select("*")
-                  .eq("id", partnerObj.profile_id)
+                  .eq("id", partnerObj.user_id)
                   .single();
                 partner = pData || undefined;
               }
-            }
-          }
+            } else {
+              const { data: members } = await supabase
+                .from("room_members")
+                .select("profile_id")
+                .eq("room_id", room.id);
 
-          // 相手が見つかった、または退会済み(undefined)でもDMとしてリストに追加
-          result.push({ ...room, partner });
-        }
+              if (members) {
+                const partnerObj = members.find(
+                  (p) => p.profile_id !== currentUser.id
+                );
+                if (partnerObj) {
+                  const { data: pData } = await supabase
+                    .from("profiles")
+                    .select("*")
+                    .eq("id", partnerObj.profile_id)
+                    .single();
+                  partner = pData || undefined;
+                }
+              }
+            }
+            result.push({ ...room, partner });
+          })
+        );
+
+        // ルーム一覧を updated_at 順 (降順) に並び替え直す
+        // Promise.allで順番が前後する可能性があるため再ソート推奨ですが、
+        // 今回はとりあえず取得順で処理されています。必要に応じて sort を入れてください。
+        result.sort(
+          (a, b) =>
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+        );
 
         setRooms(result);
+        setLatestMessages(messageMap);
       } finally {
         setLoading(false);
       }
@@ -206,7 +239,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
 
   return (
     <div className="room-list-wrapper">
-      {/* ▼ ヘッダー部分（タイトル ＆ 一斉送信ボタン） */}
+      {/* ▼ ヘッダー部分 */}
       <div
         style={{
           padding: "15px",
@@ -267,6 +300,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           backgroundColor: "white",
         }}
       >
+        {/* ...タブボタンの実装は変更なし... */}
         <button
           className={`room-tab ${tab === "friends" ? "active" : ""}`}
           onClick={() => setTab("friends")}
@@ -350,6 +384,21 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
               minute: "2-digit",
             });
 
+            // ★追加: 最新メッセージの表示ロジック
+            const lastMsg = latestMessages.get(room.id);
+            let messagePreview = "メッセージはまだありません";
+
+            if (lastMsg) {
+              if (lastMsg.message_type === MessageType.IMAGE) {
+                messagePreview = "画像が送信されました";
+              } else if (lastMsg.message_type === MessageType.AUDIO) {
+                messagePreview = "音声が送信されました";
+              } else {
+                // テキストの場合、長すぎたら省略しても良いですが、CSSで省略されることが多いです
+                messagePreview = lastMsg.content;
+              }
+            }
+
             return (
               <div
                 key={room.id}
@@ -365,7 +414,6 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
                       ((e.target as HTMLImageElement).src = PLACEHOLDER_AVATAR)
                     }
                   />
-                  {/* ▼ 未読バッジ */}
                   {unread > 0 && <span className="unread-badge">{unread}</span>}
                 </div>
 
@@ -374,10 +422,12 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
                     <strong>{title}</strong>
                     <span className="room-item-date">{dateStr}</span>
                   </div>
-                  <p className="room-item-message">
-                    {room.type === "group"
-                      ? "グループチャット"
-                      : "メッセージを確認する >"}
+                  {/* ★修正: 最新メッセージを表示 */}
+                  <p
+                    className="room-item-message"
+                    style={{ color: lastMsg ? "#666" : "#999" }}
+                  >
+                    {messagePreview}
                   </p>
                 </div>
               </div>
