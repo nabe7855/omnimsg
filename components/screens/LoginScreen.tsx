@@ -6,6 +6,9 @@ import { UserRole } from "@/lib/types";
 import { LoginProps } from "@/lib/types/screen";
 import React, { useState } from "react";
 
+// 店舗用のデフォルトアイコン
+const DEFAULT_STORE_ICON = "/default-store.jpg";
+
 export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [isRegister, setIsRegister] = useState(false);
@@ -13,6 +16,9 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+
+  // ▼▼▼ 追加: ユーザー用デフォルトアイコン選択用ステート (1〜20) ▼▼▼
+  const [selectedIconId, setSelectedIconId] = useState<number>(1);
 
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -22,6 +28,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     setEmail("");
     setPassword("");
     setName("");
+    setSelectedIconId(1); // リセット
   };
 
   const handleBack = () => setSelectedRole(null);
@@ -43,10 +50,8 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     setIsProcessing(true);
 
     try {
-      let supaUser = null;
-
       // ---------------------------
-      // ① 新規登録
+      // ① 新規登録の場合
       // ---------------------------
       if (isRegister) {
         const { data, error } = await supabase.auth.signUp({
@@ -55,7 +60,18 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
         });
         if (error) throw error;
 
-        supaUser = data.user;
+        const supaUser = data.user;
+
+        // ▼▼▼ 修正箇所: ロールに応じて初期アイコンを決定 ▼▼▼
+        let initialAvatarUrl = "";
+
+        if (selectedRole === UserRole.STORE) {
+          // 店舗の場合
+          initialAvatarUrl = DEFAULT_STORE_ICON;
+        } else if (selectedRole === UserRole.USER) {
+          // 一般ユーザーの場合：選択された番号の画像パス
+          initialAvatarUrl = `/default-user/${selectedIconId}.png`;
+        }
 
         // プロフィールを作成
         if (supaUser) {
@@ -66,44 +82,37 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
               role: selectedRole,
               name: name,
               display_id: supaUser.id.slice(0, 8),
-              avatar_url: "",
+              avatar_url: initialAvatarUrl, // 設定したパスを保存
               bio: "",
               store_id: null,
               business_hours: "",
             },
           ]);
         }
+
+        alert("アカウント作成が完了しました。\nログインしてください。");
+        setIsRegister(false);
+        setIsProcessing(false);
+        return;
       }
 
       // ---------------------------
-      // ② ログイン
+      // ② ログインの場合
       // ---------------------------
       else {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const { error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
 
-        supaUser = data.user;
+        await onLogin(selectedRole, "login", email, password, name);
       }
-
-      // ---------------------------
-      // ③ ここではログイン処理はしない
-      //     → onLogin は "遷移だけ" に使う
-      // ---------------------------
-      await onLogin(
-        selectedRole,
-        isRegister ? "register" : "login",
-        email,
-        password,
-        name
-      );
     } catch (err: any) {
-      alert(err.message || "ログインに失敗しました");
+      alert(err.message || "処理に失敗しました");
+    } finally {
+      setIsProcessing(false);
     }
-
-    setIsProcessing(false);
   };
 
   const roleLabels: Record<UserRole, string> = {
@@ -169,15 +178,63 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
 
       <div className="login-form-fields">
         {isRegister && (
-          <div className="input-group">
-            <label className="input-label">アカウント名</label>
-            <input
-              type="text"
-              className="input-field"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
+          <>
+            {/* ▼▼▼ 追加: 一般ユーザーの場合のみアイコン選択を表示 ▼▼▼ */}
+            {selectedRole === UserRole.USER && (
+              <div style={{ marginBottom: "20px" }}>
+                <label
+                  className="input-label"
+                  style={{ marginBottom: "8px", display: "block" }}
+                >
+                  アイコンを選択
+                </label>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, 1fr)",
+                    gap: "8px",
+                    maxHeight: "150px",
+                    overflowY: "auto",
+                    padding: "4px",
+                    border: "1px solid #ddd",
+                    borderRadius: "8px",
+                  }}
+                >
+                  {/* 1〜20の画像をループ表示 */}
+                  {Array.from({ length: 20 }, (_, i) => i + 1).map((id) => (
+                    <img
+                      key={id}
+                      src={`/default-user/${id}.png`}
+                      alt={`icon-${id}`}
+                      onClick={() => setSelectedIconId(id)}
+                      style={{
+                        width: "100%",
+                        aspectRatio: "1/1",
+                        objectFit: "cover",
+                        cursor: "pointer",
+                        borderRadius: "50%",
+                        border:
+                          selectedIconId === id
+                            ? "3px solid #6b46c1" // 選択中は紫の枠線
+                            : "1px solid transparent",
+                        transition: "all 0.2s",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="input-group">
+              <label className="input-label">アカウント名</label>
+              <input
+                type="text"
+                className="input-field"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+          </>
         )}
 
         <div className="input-group">
