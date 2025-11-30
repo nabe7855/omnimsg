@@ -3,6 +3,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { Profile } from "@/lib/types";
 import "@/styles/FriendTabs.css";
+import { useRouter } from "next/navigation"; // ★追加: ルーティング用
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -12,6 +13,7 @@ type Props = {
 type FriendStatus = "friends" | "requested" | "pending" | "blocked";
 
 export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
+  const router = useRouter(); // ★追加: routerの初期化
   const [tab, setTab] = useState<FriendStatus>("friends");
   const [list, setList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -137,31 +139,31 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
   // ★ 表示するパートナーを特定するヘルパー関数
   // ================================
   const getPartnerProfile = (item: any) => {
-    // データ構造によって相手が requester 側か addressee 側か変わるため判定
-    // 両方ある場合（friendsタブ）は、自分じゃない方を返す
     if (item.requester && item.addressee) {
       return item.requester.id === currentUser.id
         ? item.addressee
         : item.requester;
     }
-    // 片方しかない場合（申請中など）はある方を返す
     return item.requester || item.addressee;
   };
 
   // ================================
-  // ★ 重複排除処理（ここが重要）
+  // ★ 重複排除処理
   // ================================
-  // プロフィールIDをキーにして重複を取り除く
   const uniqueList = Array.from(
     new Map(
       list.map((item) => {
         const profile = getPartnerProfile(item);
-        // 万が一 profile がない場合は item.id (friendship id) を使う
         const key = profile ? profile.id : item.id;
         return [key, { ...item, displayProfile: profile }];
       })
     ).values()
   );
+
+  // ★追加: プロフィール画面への遷移ハンドラ
+  const handleGoToProfile = (userId: string) => {
+    router.push(`/users/${userId}`);
+  };
 
   return (
     <div className="tab-wrapper">
@@ -191,14 +193,13 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
           <div className="empty">データがありません</div>
         ) : (
           uniqueList.map((item: any) => {
-            // 上で計算済みのプロフィールを使用
             const profile = item.displayProfile;
 
-            // 万が一プロフィールが取得できなかった場合のガード
             if (!profile) return null;
 
             return (
               <div key={profile.id} className="friend-item">
+                {/* ★修正: 画像をクリック可能に */}
                 <img
                   src={profile.avatar_url || "/placeholder-avatar.png"}
                   className="avatar"
@@ -207,6 +208,8 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
                     ((e.target as HTMLImageElement).src =
                       "/placeholder-avatar.png")
                   }
+                  onClick={() => handleGoToProfile(profile.id)} // クリックイベント追加
+                  style={{ cursor: "pointer" }} // カーソルをポインターに変更
                 />
                 <div className="user-info">
                   <strong>{profile.name}</strong>
