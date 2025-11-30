@@ -181,7 +181,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
         <div className="login-role-inner">
           <h1 className="login-app-title">{APP_NAME}</h1>
           <p className="login-app-subtitle">
-            ナイトライフの新しいコミュニケーション
+            WEBだけでサクッとつながる新しいコミュニケーション
           </p>
           <p className="login-role-label">利用方法を選択してください</p>
           <div className="login-role-button-group">
