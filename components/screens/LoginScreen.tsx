@@ -4,7 +4,8 @@ import { APP_NAME } from "@/constants";
 import { supabase } from "@/lib/supabaseClient";
 import { UserRole } from "@/lib/types";
 import { LoginProps } from "@/lib/types/screen";
-import React, { useState } from "react";
+import { useSearchParams } from "next/navigation"; // ★追加
+import React, { useEffect, useState } from "react";
 
 // 店舗用のデフォルトアイコン
 const DEFAULT_STORE_ICON = "/default-store.jpg";
@@ -17,10 +18,28 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  // ユーザー用デフォルトアイコン選択用ステート
   const [selectedIconId, setSelectedIconId] = useState<number>(1);
-
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // ★追加: 再送信ボタンの表示管理
+  const [showResend, setShowResend] = useState(false);
+
+  // ★追加: URLパラメータのエラーチェック
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const errorDescription = searchParams.get("error_description");
+    const errorCode = searchParams.get("error_code");
+
+    if (errorCode === "otp_expired") {
+      alert(
+        "認証リンクの有効期限が切れているか、既に使用されています。\nログインを試みて、メール未確認の場合は再送信を行ってください。"
+      );
+    } else if (errorDescription) {
+      // その他のエラー（アクセストークン不正など）
+      console.error("Auth Error:", errorDescription);
+    }
+  }, [searchParams]);
 
   const handleRoleSelect = (role: UserRole) => {
     setSelectedRole(role);
@@ -29,9 +48,37 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     setPassword("");
     setName("");
     setSelectedIconId(1);
+    setShowResend(false); // リセット
   };
 
-  const handleBack = () => setSelectedRole(null);
+  const handleBack = () => {
+    setSelectedRole(null);
+    setShowResend(false);
+  };
+
+  // ★追加: 確認メール再送信処理
+  const handleResendEmail = async () => {
+    if (!email) return alert("メールアドレスを入力してください");
+
+    setIsProcessing(true);
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (error) throw error;
+      alert("確認メールを再送信しました。メールボックスを確認してください。");
+      setShowResend(false); // ボタンを隠す
+    } catch (e: any) {
+      alert("再送信に失敗しました: " + e.message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   // ==========================================================
   // 🚀 Supabase 認証処理
@@ -48,6 +95,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     if (!selectedRole) return;
 
     setIsProcessing(true);
+    setShowResend(false); // 初期化
 
     try {
       // ---------------------------
@@ -56,7 +104,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
       if (isRegister) {
         const redirectTo = `${window.location.origin}/auth/callback`;
 
-        // アイコンURLの決定
         let initialAvatarUrl = "";
         if (selectedRole === UserRole.STORE) {
           initialAvatarUrl = DEFAULT_STORE_ICON;
@@ -64,8 +111,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           initialAvatarUrl = `/default-user/${selectedIconId}.png`;
         }
 
-        // ★修正: options.data にプロフィール情報を渡す
-        // これらは raw_user_meta_data に保存され、トリガー関数で使用されます
         const { error } = await supabase.auth.signUp({
           email,
           password,
@@ -75,15 +120,11 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
               name: name,
               role: selectedRole,
               avatar_url: initialAvatarUrl,
-              // 必要であれば他の初期値もここに追加
             },
           },
         });
 
         if (error) throw error;
-
-        // ★削除: クライアント側での profiles への insert は削除しました。
-        // (Supabase側のトリガー関数が自動的に作成するため)
 
         alert(
           "確認メールを送信しました。\nメール内のリンクをクリックして登録を完了してください。"
@@ -102,13 +143,16 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           email,
           password,
         });
+
         if (error) {
+          // メール未確認エラーの場合
           if (error.message.includes("Email not confirmed")) {
-            alert(
-              "メールアドレスが確認されていません。\nメール内のリンクをクリックしてください。"
-            );
+            alert("メールアドレスが確認されていません。");
+            setShowResend(true); // ★再送信ボタンを表示
+          } else if (error.message.includes("Invalid login credentials")) {
+            alert("メールアドレスまたはパスワードが間違っています。");
           } else {
-            throw error;
+            alert("ログインエラー: " + error.message);
           }
           return;
         }
@@ -122,6 +166,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
+  // ... (roleLabels, isCast 定義などはそのまま) ...
   const roleLabels: Record<UserRole, string> = {
     [UserRole.USER]: "一般ユーザー",
     [UserRole.CAST]: "キャスト",
@@ -138,9 +183,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           <p className="login-app-subtitle">
             ナイトライフの新しいコミュニケーション
           </p>
-
           <p className="login-role-label">利用方法を選択してください</p>
-
           <div className="login-role-button-group">
             <button
               onClick={() => handleRoleSelect(UserRole.USER)}
@@ -268,6 +311,30 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
             : "ログイン"}
         </button>
 
+        {/* ★追加: 再送信ボタン（ログイン失敗時に表示） */}
+        {showResend && !isRegister && (
+          <div style={{ marginTop: "15px", textAlign: "center" }}>
+            <p style={{ fontSize: "12px", color: "red", marginBottom: "5px" }}>
+              メール認証が完了していません。
+            </p>
+            <button
+              onClick={handleResendEmail}
+              disabled={isProcessing}
+              style={{
+                background: "none",
+                border: "1px solid #6b46c1",
+                color: "#6b46c1",
+                padding: "8px 16px",
+                borderRadius: "4px",
+                cursor: "pointer",
+                fontSize: "13px",
+              }}
+            >
+              確認メールを再送信する
+            </button>
+          </div>
+        )}
+
         {!isCast && (
           <div className="login-toggle-area">
             <div className="login-toggle-message">
@@ -276,7 +343,10 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
                 : "アカウントをお持ちでないですか？"}
             </div>
             <button
-              onClick={() => setIsRegister(!isRegister)}
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setShowResend(false); // 切り替え時に隠す
+              }}
               className="login-toggle-link"
             >
               {isRegister ? "ログイン画面へ" : "新規登録する"}
