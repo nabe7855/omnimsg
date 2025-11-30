@@ -17,7 +17,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
 
-  // ▼▼▼ 追加: ユーザー用デフォルトアイコン選択用ステート (1〜20) ▼▼▼
+  // ユーザー用デフォルトアイコン選択用ステート
   const [selectedIconId, setSelectedIconId] = useState<number>(1);
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -28,7 +28,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     setEmail("");
     setPassword("");
     setName("");
-    setSelectedIconId(1); // リセット
+    setSelectedIconId(1);
   };
 
   const handleBack = () => setSelectedRole(null);
@@ -54,43 +54,41 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
       // ① 新規登録の場合
       // ---------------------------
       if (isRegister) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (error) throw error;
+        const redirectTo = `${window.location.origin}/auth/callback`;
 
-        const supaUser = data.user;
-
-        // ▼▼▼ 修正箇所: ロールに応じて初期アイコンを決定 ▼▼▼
+        // アイコンURLの決定
         let initialAvatarUrl = "";
-
         if (selectedRole === UserRole.STORE) {
-          // 店舗の場合
           initialAvatarUrl = DEFAULT_STORE_ICON;
         } else if (selectedRole === UserRole.USER) {
-          // 一般ユーザーの場合：選択された番号の画像パス
           initialAvatarUrl = `/default-user/${selectedIconId}.png`;
         }
 
-        // プロフィールを作成
-        if (supaUser) {
-          await supabase.from("profiles").insert([
-            {
-              id: supaUser.id,
-              email: email,
-              role: selectedRole,
+        // ★修正: options.data にプロフィール情報を渡す
+        // これらは raw_user_meta_data に保存され、トリガー関数で使用されます
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: redirectTo,
+            data: {
               name: name,
-              display_id: supaUser.id.slice(0, 8),
-              avatar_url: initialAvatarUrl, // 設定したパスを保存
-              bio: "",
-              store_id: null,
-              business_hours: "",
+              role: selectedRole,
+              avatar_url: initialAvatarUrl,
+              // 必要であれば他の初期値もここに追加
             },
-          ]);
-        }
+          },
+        });
 
-        alert("アカウント作成が完了しました。\nログインしてください。");
+        if (error) throw error;
+
+        // ★削除: クライアント側での profiles への insert は削除しました。
+        // (Supabase側のトリガー関数が自動的に作成するため)
+
+        alert(
+          "確認メールを送信しました。\nメール内のリンクをクリックして登録を完了してください。"
+        );
+
         setIsRegister(false);
         setIsProcessing(false);
         return;
@@ -104,7 +102,16 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           email,
           password,
         });
-        if (error) throw error;
+        if (error) {
+          if (error.message.includes("Email not confirmed")) {
+            alert(
+              "メールアドレスが確認されていません。\nメール内のリンクをクリックしてください。"
+            );
+          } else {
+            throw error;
+          }
+          return;
+        }
 
         await onLogin(selectedRole, "login", email, password, name);
       }
@@ -123,9 +130,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
 
   const isCast = selectedRole === UserRole.CAST;
 
-  // ==========================================================
-  // 🚀 ロール選択画面
-  // ==========================================================
   if (!selectedRole) {
     return (
       <div className="login-screen login-screen-role-select">
@@ -162,9 +166,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     );
   }
 
-  // ==========================================================
-  // 🚀 メール・パスワード入力画面
-  // ==========================================================
   return (
     <div className="login-screen login-screen-form">
       <button onClick={handleBack} className="login-back-button" type="button">
@@ -179,7 +180,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
       <div className="login-form-fields">
         {isRegister && (
           <>
-            {/* ▼▼▼ 追加: 一般ユーザーの場合のみアイコン選択を表示 ▼▼▼ */}
             {selectedRole === UserRole.USER && (
               <div style={{ marginBottom: "20px" }}>
                 <label
@@ -200,7 +200,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
                     borderRadius: "8px",
                   }}
                 >
-                  {/* 1〜20の画像をループ表示 */}
                   {Array.from({ length: 20 }, (_, i) => i + 1).map((id) => (
                     <img
                       key={id}
@@ -215,7 +214,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
                         borderRadius: "50%",
                         border:
                           selectedIconId === id
-                            ? "3px solid #6b46c1" // 選択中は紫の枠線
+                            ? "3px solid #6b46c1"
                             : "1px solid transparent",
                         transition: "all 0.2s",
                       }}
