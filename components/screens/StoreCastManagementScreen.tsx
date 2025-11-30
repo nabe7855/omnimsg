@@ -1,4 +1,3 @@
-// 🔽 新規グループ作成ボタン 追加バージョン
 "use client";
 
 import { supabase } from "@/lib/supabaseClient";
@@ -6,6 +5,12 @@ import { Profile, UserRole } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
 import { createClient } from "@supabase/supabase-js";
 import React, { useCallback, useEffect, useState } from "react";
+
+// ▼ 追加: 展開時のデータ型
+type CastRelations = {
+  friends: Profile[];
+  blockedFriends: Profile[];
+};
 
 export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   currentUser,
@@ -18,6 +23,13 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   const [newEmail, setNewEmail] = useState("");
   const [newPass, setNewPass] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // ▼ 追加: 展開機能用のステート
+  const [expandedCastId, setExpandedCastId] = useState<string | null>(null);
+  const [castRelations, setCastRelations] = useState<CastRelations | null>(
+    null
+  );
+  const [loadingRelations, setLoadingRelations] = useState(false);
 
   // -----------------------------
   // 🔒 安全 navigate
@@ -54,7 +66,84 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   }, [fetchCasts]);
 
   // -----------------------------
-  // 2. キャスト作成
+  // 2. キャストの関連ユーザー（友達/ブロック）を取得
+  // -----------------------------
+  const toggleExpand = async (castId: string) => {
+    // 既に開いているものを閉じるとき
+    if (expandedCastId === castId) {
+      setExpandedCastId(null);
+      setCastRelations(null);
+      return;
+    }
+
+    // 新しく開くとき
+    setExpandedCastId(castId);
+    setLoadingRelations(true);
+    setCastRelations(null);
+
+    try {
+      // A. 友達リストを取得 (friendships)
+      const { data: friendsData, error: friendsError } = await supabase
+        .from("friendships")
+        .select("requester_id, addressee_id")
+        .eq("status", "accepted")
+        .or(`requester_id.eq.${castId},addressee_id.eq.${castId}`);
+
+      if (friendsError) throw friendsError;
+
+      // 相手のIDを抽出
+      const friendIds = (friendsData || []).map((f) =>
+        f.requester_id === castId ? f.addressee_id : f.requester_id
+      );
+
+      if (friendIds.length === 0) {
+        setCastRelations({ friends: [], blockedFriends: [] });
+        setLoadingRelations(false);
+        return;
+      }
+
+      // B. キャストがブロックしているリストを取得 (connections)
+      const { data: blockData, error: blockError } = await supabase
+        .from("connections")
+        .select("target_id")
+        .eq("user_id", castId)
+        .eq("status", "blocked");
+
+      if (blockError) throw blockError;
+
+      const blockedIds = new Set(blockData?.map((b) => b.target_id) || []);
+
+      // C. プロフィール情報を一括取得
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("*")
+        .in("id", friendIds);
+
+      if (profilesError) throw profilesError;
+
+      // D. 「友達」と「ブロック中の友達」に振り分け
+      const friends: Profile[] = [];
+      const blockedFriends: Profile[] = [];
+
+      (profiles || []).forEach((p) => {
+        if (blockedIds.has(p.id)) {
+          blockedFriends.push(p);
+        } else {
+          friends.push(p);
+        }
+      });
+
+      setCastRelations({ friends, blockedFriends });
+    } catch (e) {
+      console.error("関係取得エラー:", e);
+      alert("データの取得に失敗しました");
+    } finally {
+      setLoadingRelations(false);
+    }
+  };
+
+  // -----------------------------
+  // 3. キャスト作成
   // -----------------------------
   const handleCreate = async () => {
     if (!newName || !newEmail || !newPass) {
@@ -125,7 +214,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   };
 
   // -----------------------------
-  // 3. キャスト削除
+  // 4. キャスト削除
   // -----------------------------
   const handleDelete = async (castId: string) => {
     if (!window.confirm("このキャストを削除してもよいですか？")) return;
@@ -160,7 +249,6 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
       <div className="cast-mgmt-header">
         <h2 className="heading-xl cast-mgmt-title">キャスト管理</h2>
 
-        {/* 追加: グループ作成ボタン */}
         <button
           type="button"
           onClick={() => safeNavigate("/group/create")}
@@ -180,38 +268,214 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
 
       {/* キャスト一覧 */}
       <div className="cast-mgmt-list">
-        {myCasts.map((c) => (
-          <div
-            key={c.id}
-            className="cast-mgmt-card"
-            onClick={() => safeNavigate(`/users/${c.id}`)}
-          >
-            <div className="cast-mgmt-card-main">
-              <img
-                src={c.avatar_url || "/placeholder-avatar.png"}
-                className="cast-mgmt-avatar"
-                alt={c.name}
-              />
-              <div>
-                <div className="cast-mgmt-name">{c.name}</div>
-                <div className="cast-mgmt-id">ID: {c.display_id}</div>
-              </div>
-            </div>
-            <div className="cast-mgmt-card-right">
-              <div className="cast-mgmt-status-label">有効</div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(c.id);
-                }}
-                className="cast-mgmt-delete-button"
+        {myCasts.map((c) => {
+          const isExpanded = expandedCastId === c.id;
+
+          return (
+            <div
+              key={c.id}
+              className="cast-mgmt-card-wrapper"
+              style={{
+                marginBottom: "10px",
+                border: "1px solid #eee",
+                borderRadius: "8px",
+                overflow: "hidden",
+                backgroundColor: "#fff",
+              }}
+            >
+              {/* カード本体 */}
+              <div
+                className="cast-mgmt-card"
+                onClick={() => safeNavigate(`/users/${c.id}`)}
+                style={{ borderBottom: isExpanded ? "1px solid #eee" : "none" }}
               >
-                🗑️
-              </button>
+                <div className="cast-mgmt-card-main">
+                  <img
+                    src={c.avatar_url || "/placeholder-avatar.png"}
+                    className="cast-mgmt-avatar"
+                    alt={c.name}
+                  />
+                  <div>
+                    <div className="cast-mgmt-name">{c.name}</div>
+                    <div className="cast-mgmt-id">ID: {c.display_id}</div>
+                  </div>
+                </div>
+                <div className="cast-mgmt-card-right">
+                  <div className="cast-mgmt-status-label">有効</div>
+
+                  {/* ▼ 追加: 展開ボタン */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation(); // 親の遷移イベントを止める
+                      toggleExpand(c.id);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "1px solid #ddd",
+                      borderRadius: "4px",
+                      padding: "4px 8px",
+                      marginRight: "8px",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                    }}
+                  >
+                    {isExpanded ? "▲" : "▼"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(c.id);
+                    }}
+                    className="cast-mgmt-delete-button"
+                  >
+                    🗑️
+                  </button>
+                </div>
+              </div>
+
+              {/* ▼ 展開エリア（友達リスト & ブロックリスト） */}
+              {isExpanded && (
+                <div
+                  className="cast-relations-area"
+                  style={{ padding: "10px", backgroundColor: "#f9f9f9" }}
+                >
+                  {loadingRelations ? (
+                    <p style={{ fontSize: "12px", color: "#666" }}>
+                      読み込み中...
+                    </p>
+                  ) : !castRelations ? (
+                    <p>データがありません</p>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "15px",
+                      }}
+                    >
+                      {/* 1. 友達リスト */}
+                      <div>
+                        <h4
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: "bold",
+                            marginBottom: "5px",
+                            color: "#6b46c1",
+                          }}
+                        >
+                          友達リスト ({castRelations.friends.length})
+                        </h4>
+                        {castRelations.friends.length === 0 ? (
+                          <p style={{ fontSize: "12px", color: "#999" }}>
+                            なし
+                          </p>
+                        ) : (
+                          <ul
+                            style={{ listStyle: "none", padding: 0, margin: 0 }}
+                          >
+                            {castRelations.friends.map((friend) => (
+                              <li
+                                key={friend.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  padding: "4px 0",
+                                  borderBottom: "1px dashed #eee",
+                                  cursor: "pointer",
+                                }}
+                                onClick={() =>
+                                  safeNavigate(`/users/${friend.id}`)
+                                }
+                              >
+                                <img
+                                  src={
+                                    friend.avatar_url ||
+                                    "/placeholder-avatar.png"
+                                  }
+                                  style={{
+                                    width: "24px",
+                                    height: "24px",
+                                    borderRadius: "50%",
+                                    marginRight: "8px",
+                                    objectFit: "cover",
+                                  }}
+                                />
+                                <span style={{ fontSize: "12px" }}>
+                                  {friend.name}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      {/* 2. ブロック中の友達 */}
+                      <div>
+                        <h4
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: "bold",
+                            marginBottom: "5px",
+                            color: "#e53e3e",
+                          }}
+                        >
+                          ブロック中の友達 (
+                          {castRelations.blockedFriends.length})
+                        </h4>
+                        {castRelations.blockedFriends.length === 0 ? (
+                          <p style={{ fontSize: "12px", color: "#999" }}>
+                            なし
+                          </p>
+                        ) : (
+                          <ul
+                            style={{ listStyle: "none", padding: 0, margin: 0 }}
+                          >
+                            {castRelations.blockedFriends.map((blocked) => (
+                              <li
+                                key={blocked.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  padding: "4px 0",
+                                  borderBottom: "1px dashed #eee",
+                                  cursor: "pointer",
+                                  opacity: 0.6, // ブロック中は少し薄く表示
+                                }}
+                                onClick={() =>
+                                  safeNavigate(`/users/${blocked.id}`)
+                                }
+                              >
+                                <img
+                                  src={
+                                    blocked.avatar_url ||
+                                    "/placeholder-avatar.png"
+                                  }
+                                  style={{
+                                    width: "24px",
+                                    height: "24px",
+                                    borderRadius: "50%",
+                                    marginRight: "8px",
+                                    objectFit: "cover",
+                                  }}
+                                />
+                                <span style={{ fontSize: "12px" }}>
+                                  {blocked.name}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {myCasts.length === 0 && (
           <div className="cast-mgmt-empty-message">
