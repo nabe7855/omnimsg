@@ -58,7 +58,7 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
   });
 
   // ==========================================
-  // ★修正点1: 初期表示時にDBから最新データを取得して上書きする
+  // 初期表示時にDBから最新データを取得
   // ==========================================
   useEffect(() => {
     const fetchLatestProfile = async () => {
@@ -82,7 +82,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         .single();
 
       if (!error && data) {
-        // 取得できたらステートを最新情報で更新
         setCurrentAvatarUrl(data.avatar_url);
         setForm({
           name: data.name || "",
@@ -93,7 +92,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
           phone_number: data.phone_number || "",
           website_url: data.website_url || "",
         });
-        // 念のためcurrentUserオブジェクトも更新しておく
         Object.assign(currentUser, data);
       }
     };
@@ -125,7 +123,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
     }
   };
 
-  // 保存処理
   const handleSave = async () => {
     if (isSaving) return;
     setIsSaving(true);
@@ -133,7 +130,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
     let newAvatarUrl = currentAvatarUrl;
 
     try {
-      // 1. 画像が新しく選択されている場合の処理
       if (avatarFile) {
         if (currentAvatarUrl) {
           const urlParts = currentAvatarUrl.split("/avatars/");
@@ -142,7 +138,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
             const { error: removeError } = await supabase.storage
               .from("avatars")
               .remove([oldPath]);
-
             if (removeError) {
               console.warn("古い画像の削除に失敗しました:", removeError);
             }
@@ -165,7 +160,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         newAvatarUrl = publicData.publicUrl;
       }
 
-      // 2. プロフィール情報を更新
       const { error: updateError } = await supabase
         .from("profiles")
         .update({
@@ -176,7 +170,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
 
       if (updateError) throw updateError;
 
-      // 3. 成功時の処理
       Object.assign(currentUser, { ...form, avatar_url: newAvatarUrl });
       setCurrentAvatarUrl(newAvatarUrl);
 
@@ -197,7 +190,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
     setIsEditing(false);
     setAvatarFile(null);
     setAvatarPreview(null);
-    // キャンセル時は元のcurrentUser（もしくはfetchした最新情報）に戻す
     setForm({
       name: currentUser.name || "",
       email: currentUser.email || "",
@@ -207,6 +199,56 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
       phone_number: currentUser.phone_number || "",
       website_url: currentUser.website_url || "",
     });
+  };
+
+  // ==========================================
+  // ★修正: アカウント削除機能 (API経由)
+  // ==========================================
+  const handleDeleteAccount = async () => {
+    if (
+      !window.confirm(
+        "本当にアカウントを削除しますか？\nこの操作は取り消せません。\nログイン情報を含む全てのデータが完全に削除されます。"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+
+      // 1. APIルートを呼び出して削除実行
+      const response = await fetch("/api/delete-account", {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "削除に失敗しました");
+      }
+
+      alert("アカウントを削除しました。ご利用ありがとうございました。");
+
+      // 2. ログアウト処理
+      // ユーザーは既に削除されているため、サーバー側で 403 エラーが出ますが
+      // クライアント側のセッションを破棄できれば良いので、エラーは無視して続行します。
+      try {
+        await onLogout();
+      } catch (logoutError) {
+        console.log(
+          "ログアウトAPIはスキップされました（ユーザー削除済みのため）"
+        );
+
+        // もし onLogout 内でエラーが起きて遷移しない場合の保険として
+        // 以下のいずれかで強制的にログイン画面へ戻す処理を入れても良いです
+        // window.location.href = "/login";
+        // 修正前のコードで onLogout が画面遷移を担当しているならそのままでOK
+      }
+    } catch (error: any) {
+      console.error("退会エラー:", error);
+      alert(`エラーが発生しました: ${error.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const avatarSrc =
@@ -264,13 +306,11 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         </div>
       </div>
 
-      {/* ====== 名前 ＆ ロールバッジ ====== */}
       <div className="profile-info-center">
         <h3 className="profile-name">{form.name || currentUser.name}</h3>
         <span className="profile-role-badge">{displayRole}</span>
       </div>
 
-      {/* ====== 閲覧モード ====== */}
       {!isEditing && (
         <>
           <div className="profile-cards">
@@ -310,7 +350,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
                   <div>{form.phone_number || "未設定"}</div>
                 </div>
 
-                {/* ★修正点2: ホームページURLをリンク化 */}
                 <div className="profile-card">
                   <label>ホームページURL</label>
                   <div>
@@ -346,10 +385,27 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
           <button className="profile-logout-button" onClick={onLogout}>
             ログアウト
           </button>
+
+          {/* ★ アカウント削除ボタン */}
+          <button
+            onClick={handleDeleteAccount}
+            style={{
+              marginTop: "20px",
+              background: "none",
+              border: "none",
+              color: "#ff4444",
+              fontSize: "14px",
+              textDecoration: "underline",
+              cursor: "pointer",
+              width: "100%",
+              padding: "10px",
+            }}
+          >
+            アカウントを削除する
+          </button>
         </>
       )}
 
-      {/* ====== 編集モード ====== */}
       {isEditing && (
         <>
           <div className="edit-form">
