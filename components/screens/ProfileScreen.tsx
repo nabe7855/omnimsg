@@ -202,7 +202,7 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
   };
 
   // ==========================================
-  // ★修正: アカウント削除機能
+  // ★修正: アカウント削除機能（スマホ対応・強力キャッシュクリア版）
   // ==========================================
   const handleDeleteAccount = async () => {
     if (
@@ -226,22 +226,33 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         throw new Error(errorData.error || "削除に失敗しました");
       }
 
-      alert("アカウントを削除しました。ご利用ありがとうございました。");
+      alert("アカウントを削除しました。");
 
-      // 2. クライアント側の後始末 (ここを強化)
+      // 2. クライアント側の後始末（ここを強化）
       try {
-        // Supabaseの正規ログアウトを試みる（403エラーが出るかもしれないが実行する）
-        await onLogout();
+        // ダメ元でログアウトを試みる（エラーは無視）
+        await supabase.auth.signOut();
       } catch (e) {
-        console.log("Logout API failed, forcing local cleanup", e);
-      } finally {
-        // ★重要: 強制的にローカルストレージの認証情報を消す
-        // これをやらないと "Invalid Refresh Token" エラーがループする原因になります
-        localStorage.clear(); // または supabase.auth.token などを特定して消す
-
-        // ログイン画面へ強制リロード遷移
-        window.location.href = "/login";
+        console.log("SignOut skipped:", e);
       }
+
+      // 3. 【重要】ローカルストレージの強力な消去
+      // Supabaseのトークンが入っているキー("sb-xxxx-auth-token")を探して消す
+      Object.keys(localStorage).forEach((key) => {
+        if (key.startsWith("sb-") || key.includes("supabase")) {
+          localStorage.removeItem(key);
+        }
+      });
+      // 念のため全消去
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // 4. 少し待ってから強制リロード遷移
+      // スマホだとストレージ消去の反映が遅れることがあるため
+      setTimeout(() => {
+        // replaceを使うことで「戻る」ボタンで戻れなくする
+        window.location.replace("/login");
+      }, 500);
     } catch (error: any) {
       console.error("退会エラー:", error);
       alert(`エラーが発生しました: ${error.message}`);
