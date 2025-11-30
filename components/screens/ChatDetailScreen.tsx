@@ -20,6 +20,9 @@ const PLACEHOLDER_AVATAR = "/placeholder-avatar.png";
 const MAX_RECORDING_TIME_MS = 60000; // 60秒
 const MAX_AUDIO_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 
+// LINE 方式の「ほぼ最下部」とみなす閾値(px)
+const BOTTOM_THRESHOLD_PX = 80;
+
 export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   currentUser,
   roomId,
@@ -30,6 +33,11 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // スクロール位置管理
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true); // 初期は「最新まで見ている」とみなす
+  const lastMarkReadTimeRef = useRef<number>(0); // markAsRead の呼びすぎ防止用
 
   // 録音用ステートとRef
   const [isRecording, setIsRecording] = useState(false);
@@ -55,9 +63,17 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
 
   // ============================
   // 既読化処理 (message_reads 対応版)
+  // LINE 方式：画面下部付近を見ているときだけ実行
   // ============================
   const markAsRead = async () => {
     if (!currentUser || !roomId) return;
+
+    // 短時間に連打しないようにガード（0.5秒に1回）
+    const now = Date.now();
+    if (now - lastMarkReadTimeRef.current < 500) {
+      return;
+    }
+    lastMarkReadTimeRef.current = now;
 
     try {
       // 1. このルームの「自分以外が送信した」メッセージIDをすべて取得
@@ -111,6 +127,28 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       }
     } catch (e) {
       console.error("既読処理エラー:", e);
+    }
+  };
+
+  // ============================
+  // スクロール位置判定（LINE 方式）
+  // ============================
+  const checkIsAtBottom = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return true; // コンテナがまだ無いときは「下にいる」とみなす
+
+    const { scrollTop, clientHeight, scrollHeight } = container;
+    // 下から BOTTOM_THRESHOLD_PX 以内なら「最下部」と判定
+    return scrollTop + clientHeight >= scrollHeight - BOTTOM_THRESHOLD_PX;
+  };
+
+  const handleScroll = () => {
+    const atBottom = checkIsAtBottom();
+    setIsAtBottom(atBottom);
+
+    // 画面を一番下まで見ているタイミングで既読化
+    if (atBottom) {
+      void markAsRead();
     }
   };
 
@@ -176,6 +214,9 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         partner,
         member_ids: allMemberIds,
       });
+
+      // ルーム切り替え時は「一番下を見ている」状態からスタート
+      setIsAtBottom(true);
     };
 
     loadRoomAndMembers();
@@ -272,12 +313,14 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         .select("*")
         .eq("room_id", roomId)
         .order("created_at", { ascending: true });
+
       if (data) {
         setMessages(data);
-        // ★ 画面を開いたときに既読にする
-        markAsRead();
+        // 初回ロード時の既読処理は「スクロール位置の useEffect」に任せる
+        // （LINE方式：画面下端を見たタイミングで既読）
       }
     };
+
     loadMessages();
 
     const channel = supabase
@@ -292,15 +335,15 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
         },
         (payload) => {
           const newMsg = payload.new as Message;
+
           setMessages((prev) => {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
 
-          // ★ 新着メッセージを開いている間は即既読登録する
-          if (currentUser && newMsg.sender_id !== currentUser.id) {
-            markAsRead();
-          }
+          // 既読処理はここでは行わない
+          // → 下の useEffect([messages, isAtBottom]) で
+          // 「ユーザーが最下部を見ていれば既読」にする
         }
       )
       .subscribe();
@@ -310,9 +353,22 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
     };
   }, [roomId, currentUser]);
 
+  // ============================
+  // メッセージ変更時：必要ならオートスクロール & 既読
+  // ============================
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    // ユーザーが最下部付近を見ている場合のみ：
+    // 1) 自動スクロール
+    // 2) 既読処理（LINE方式）
+    if (isAtBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      void markAsRead();
+    }
+  }, [messages, isAtBottom]);
+
+  // ============================
+  // （旧）単純なスクロール → こちらは上で置き換え済み
+  // ============================
 
   // ============================
   // 以下、録音・送信・UIロジック
@@ -653,7 +709,11 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
       </div>
 
       {/* Messages */}
-      <div className="chat-messages">
+      <div
+        className="chat-messages"
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+      >
         {messages.length === 0 && (
           <div className="chat-empty-message">メッセージはまだありません</div>
         )}
@@ -663,7 +723,7 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
           const isImage = m.message_type === MessageType.IMAGE;
           const isAudio = m.message_type === MessageType.AUDIO;
 
-          // ★追加: メッセージ送信者のプロフィールを取得
+          // ★ メッセージ送信者のプロフィールを取得（グループで名前表示に使用）
           const senderProfile = memberProfiles.find(
             (p) => p.id === m.sender_id
           );
@@ -679,12 +739,12 @@ export const ChatDetailScreen: React.FC<ChatDetailProps> = ({
               <div
                 style={{
                   display: "flex",
-                  flexDirection: "column",
-                  alignItems: isMe ? "flex-end" : "flex-start",
-                  maxWidth: "80%",
+                  width: "100%", // 幅を最大にして左右寄せを有効にする
+                  justifyContent: isMe ? "flex-end" : "flex-start", // 自分の場合は右寄せ
+                  marginBottom: "10px", // メッセージ間の余白
                 }}
               >
-                {/* ★追加: グループチャットかつ自分以外の場合、名前を表示 */}
+                {/* グループチャットかつ自分以外の場合、名前を表示 */}
                 {!isMe && currentRoom.type === "group" && (
                   <span
                     style={{

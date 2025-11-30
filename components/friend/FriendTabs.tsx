@@ -105,7 +105,7 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
       return;
     }
 
-    setList(data);
+    setList(data || []);
     setLoading(false);
   };
 
@@ -114,6 +114,7 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
   // ================================
 
   const cancelRequest = async (id: string) => {
+    if (!window.confirm("申請を取り下げますか？")) return;
     await supabase.from("friendships").delete().eq("id", id);
     loadList(tab);
   };
@@ -127,9 +128,40 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
   };
 
   const rejectRequest = async (id: string) => {
+    if (!window.confirm("拒否しますか？")) return;
     await supabase.from("friendships").delete().eq("id", id);
     loadList(tab);
   };
+
+  // ================================
+  // ★ 表示するパートナーを特定するヘルパー関数
+  // ================================
+  const getPartnerProfile = (item: any) => {
+    // データ構造によって相手が requester 側か addressee 側か変わるため判定
+    // 両方ある場合（friendsタブ）は、自分じゃない方を返す
+    if (item.requester && item.addressee) {
+      return item.requester.id === currentUser.id
+        ? item.addressee
+        : item.requester;
+    }
+    // 片方しかない場合（申請中など）はある方を返す
+    return item.requester || item.addressee;
+  };
+
+  // ================================
+  // ★ 重複排除処理（ここが重要）
+  // ================================
+  // プロフィールIDをキーにして重複を取り除く
+  const uniqueList = Array.from(
+    new Map(
+      list.map((item) => {
+        const profile = getPartnerProfile(item);
+        // 万が一 profile がない場合は item.id (friendship id) を使う
+        const key = profile ? profile.id : item.id;
+        return [key, { ...item, displayProfile: profile }];
+      })
+    ).values()
+  );
 
   return (
     <div className="tab-wrapper">
@@ -155,16 +187,26 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
       <div className="tab-content">
         {loading ? (
           <div className="empty">読み込み中...</div>
-        ) : list.length === 0 ? (
+        ) : uniqueList.length === 0 ? (
           <div className="empty">データがありません</div>
         ) : (
-          list.map((item: any) => {
-            const profile = item.requester || item.addressee;
+          uniqueList.map((item: any) => {
+            // 上で計算済みのプロフィールを使用
+            const profile = item.displayProfile;
+
+            // 万が一プロフィールが取得できなかった場合のガード
+            if (!profile) return null;
+
             return (
               <div key={profile.id} className="friend-item">
                 <img
                   src={profile.avatar_url || "/placeholder-avatar.png"}
                   className="avatar"
+                  alt="avatar"
+                  onError={(e) =>
+                    ((e.target as HTMLImageElement).src =
+                      "/placeholder-avatar.png")
+                  }
                 />
                 <div className="user-info">
                   <strong>{profile.name}</strong>
