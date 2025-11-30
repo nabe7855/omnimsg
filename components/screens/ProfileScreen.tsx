@@ -202,7 +202,7 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
   };
 
   // ==========================================
-  // ★修正: アカウント削除機能 (API経由)
+  // ★修正: アカウント削除機能
   // ==========================================
   const handleDeleteAccount = async () => {
     if (
@@ -228,25 +228,23 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
 
       alert("アカウントを削除しました。ご利用ありがとうございました。");
 
-      // 2. ログアウト処理
-      // ユーザーは既に削除されているため、サーバー側で 403 エラーが出ますが
-      // クライアント側のセッションを破棄できれば良いので、エラーは無視して続行します。
+      // 2. クライアント側の後始末 (ここを強化)
       try {
+        // Supabaseの正規ログアウトを試みる（403エラーが出るかもしれないが実行する）
         await onLogout();
-      } catch (logoutError) {
-        console.log(
-          "ログアウトAPIはスキップされました（ユーザー削除済みのため）"
-        );
+      } catch (e) {
+        console.log("Logout API failed, forcing local cleanup", e);
+      } finally {
+        // ★重要: 強制的にローカルストレージの認証情報を消す
+        // これをやらないと "Invalid Refresh Token" エラーがループする原因になります
+        localStorage.clear(); // または supabase.auth.token などを特定して消す
 
-        // もし onLogout 内でエラーが起きて遷移しない場合の保険として
-        // 以下のいずれかで強制的にログイン画面へ戻す処理を入れても良いです
-        // window.location.href = "/login";
-        // 修正前のコードで onLogout が画面遷移を担当しているならそのままでOK
+        // ログイン画面へ強制リロード遷移
+        window.location.href = "/login";
       }
     } catch (error: any) {
       console.error("退会エラー:", error);
       alert(`エラーが発生しました: ${error.message}`);
-    } finally {
       setIsSaving(false);
     }
   };

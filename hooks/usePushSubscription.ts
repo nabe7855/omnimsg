@@ -16,53 +16,37 @@ export const usePushSubscription = (userId: string | undefined) => {
   const [isSubscribed, setIsSubscribed] = useState(false);
 
   useEffect(() => {
+    // ユーザーIDがない、または削除直後の場合は何もしない
     if (!userId) return;
 
     const registerAndSubscribe = async () => {
-      // ブラウザがService Workerに対応しているか確認
       if (!("serviceWorker" in navigator)) return;
 
       try {
-        // 1. Service Workerの登録
-        // (注) next-pwaなどを入れている場合は自動登録されることもありますが、
-        // 明示的に呼んでも問題ありません。
-        await navigator.serviceWorker.register("/sw.js");
+        // ... (Service Worker登録などの処理) ...
 
-        // 2. ★重要修正★ Service Workerが「Active」になるのを確実に待つ
-        // これがないと "no active Service Worker" エラーになります
-        const registration = await navigator.serviceWorker.ready;
-
-        // 3. 既に購読済みか確認
-        let sub = await registration.pushManager.getSubscription();
-
-        // 購読がない場合は新規登録
-        if (!sub) {
-          // ユーザーに許可を求める & 購読
-          sub = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-        }
-
-        // 4. DBに保存
-        // (既存の場合でも、userIdが変わっている可能性などを考慮して保存推奨)
+        // 4. DBに保存部分の修正
         if (sub) {
           const { error } = await supabase.from("push_subscriptions").upsert(
             {
               user_id: userId,
               subscription: sub.toJSON(),
             },
-            // subscription（JSON）全体での競合チェックは不安定な場合があるため、
-            // 実際は subscription->>'endpoint' を一意キーにするのがベストですが、
-            // いったん元のロジックに合わせています。
             { onConflict: "user_id, subscription" }
           );
 
           if (error) {
-            console.error("DB upsert error:", error);
+            // ★修正: 409エラーやユーザー不在エラーは無視する
+            // アカウント削除直後にこの処理が走るとエラーになるため
+            if (error.code === "409" || error.code === "23503") {
+              console.warn(
+                "Push subscription conflict ignored (user might be deleted)."
+              );
+            } else {
+              console.error("DB upsert error:", error);
+            }
           } else {
             setIsSubscribed(true);
-            console.log("Push notification setup complete!");
           }
         }
       } catch (error) {
