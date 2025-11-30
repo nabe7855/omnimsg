@@ -1,22 +1,26 @@
 "use client";
 
-import { HomeScreen } from "@/components/screens/Screens";
 import { useAuth } from "@/hooks/useAuth";
 import { useNav } from "@/hooks/useNav";
+import { useEffect } from "react";
 
 export default function Page() {
   const navigate = useNav();
   const { currentUser, loaded } = useAuth();
 
-  // ★ ローディング中は何も描画しない
-  if (!loaded) return null;
+  useEffect(() => {
+    // ローディング中はまだ判断しない
+    if (!loaded) return;
 
-  // ★ 未ログインならログインページへ
-  if (!currentUser) {
-    navigate("/login");
-    return null;
-  }
+    if (!currentUser) {
+      // 未ログインならログイン画面へ
+      navigate("/login");
+    } else {
+      // ★ ログイン済みなら /home へ転送
+      navigate("/home");
+    }
+  }, [currentUser, loaded, navigate]);
 
-  // ★ currentUser は Profile のみ（null ではない）
-  return <HomeScreen currentUser={currentUser} navigate={navigate} />;
+  // リダイレクト用ページなので何も描画しない（またはローディング表示）
+  return null;
 }
