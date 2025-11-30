@@ -105,6 +105,44 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
   };
 
   // ============================================
+  // ★修正: ブロック機能
+  // ============================================
+  const handleBlock = async () => {
+    if (!currentUser || !profile) return;
+    if (
+      !window.confirm(
+        `${profile.name}さんをブロックしますか？\n（友達関係は維持されますが、ブロック中はメッセージ等が制限されます）`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      // 1. connectionsテーブルにブロック情報を登録 (Upsert)
+      // 既存の friendship は削除しない
+      const { error: blockError } = await supabase.from("connections").upsert(
+        {
+          user_id: currentUser.id,
+          target_id: profile.id,
+          status: "blocked",
+        },
+        { onConflict: "user_id, target_id" }
+      );
+
+      if (blockError) throw blockError;
+
+      // ★修正: friendshipsテーブルの削除処理を削除しました
+      // これにより、ブロック解除時に元の関係（友達など）が復活します
+
+      alert("ブロックしました");
+      navigate("/talks"); // トーク一覧画面などに強制遷移
+    } catch (e) {
+      console.error("ブロックエラー:", e);
+      alert("ブロックに失敗しました");
+    }
+  };
+
+  // ============================================
   // チャット開始（既存）
   // ============================================
   const getOrCreateRoom = async (partnerId: string) => {
@@ -225,12 +263,38 @@ export const PublicProfileScreen: React.FC<PublicProfileProps> = ({
 
         {/* DM ボタン */}
         {!isMe && (
-          <button
-            className="public-profile-action-button-secondary"
-            onClick={handleSendMessage}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              width: "100%",
+              alignItems: "center",
+            }}
           >
-            💬 メッセージを送る
-          </button>
+            <button
+              className="public-profile-action-button-secondary"
+              onClick={handleSendMessage}
+            >
+              💬 メッセージを送る
+            </button>
+
+            {/* ★追加: ブロックボタン */}
+            <button
+              onClick={handleBlock}
+              style={{
+                marginTop: "10px",
+                color: "#ff4444",
+                background: "none",
+                border: "none",
+                fontSize: "12px",
+                textDecoration: "underline",
+                cursor: "pointer",
+              }}
+            >
+              🚫 このユーザーをブロックする
+            </button>
+          </div>
         )}
       </div>
     </div>

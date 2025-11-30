@@ -3,7 +3,7 @@
 import { supabase } from "@/lib/supabaseClient";
 import { Profile } from "@/lib/types";
 import "@/styles/FriendTabs.css";
-import { useRouter } from "next/navigation"; // ★追加: ルーティング用
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type Props = {
@@ -13,7 +13,7 @@ type Props = {
 type FriendStatus = "friends" | "requested" | "pending" | "blocked";
 
 export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
-  const router = useRouter(); // ★追加: routerの初期化
+  const router = useRouter();
   const [tab, setTab] = useState<FriendStatus>("friends");
   const [list, setList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,82 +37,143 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
     const user = currentUser;
     if (!user) return;
 
-    let query;
-
-    /** 友だち（accepted） */
-    if (type === "friends") {
-      query = supabase
-        .from("friendships")
-        .select(
-          `
-          id,
-          status,
-          requester:profiles!friendships_requester_id_fkey(${profileSelect}),
-          addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
-        `
-        )
-        .eq("status", "accepted")
-        .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
-    }
-
-    /** 自分 → 相手（requested） */
-    if (type === "requested") {
-      query = supabase
-        .from("friendships")
-        .select(
-          `
-          id,
-          status,
-          addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
-        `
-        )
-        .eq("requester_id", user.id)
-        .eq("status", "pending");
-    }
-
-    /** 相手 → 自分（pending） */
-    if (type === "pending") {
-      query = supabase
-        .from("friendships")
-        .select(
-          `
-          id,
-          status,
-          requester:profiles!friendships_requester_id_fkey(${profileSelect})
-        `
-        )
-        .eq("addressee_id", user.id)
-        .eq("status", "pending");
-    }
-
-    /** ブロック（自分がブロックした） */
-    if (type === "blocked") {
-      query = supabase
-        .from("friendships")
-        .select(
-          `
-          id,
-          status,
-          addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
-        `
-        )
-        .eq("requester_id", user.id)
+    try {
+      // ---------------------------------------------------------
+      // 1. ブロックリスト（除外用）を先に取得
+      // ---------------------------------------------------------
+      // 自分がブロックしている相手のIDリストを取得しておく
+      const { data: blockedData } = await supabase
+        .from("connections")
+        .select("target_id")
+        .eq("user_id", user.id)
         .eq("status", "blocked");
-    }
 
-    const { data, error } = await query!;
-    if (error) {
-      console.error("❌ load error:", error);
+      const blockedUserIds = new Set(
+        blockedData?.map((b) => b.target_id) || []
+      );
+
+      // ---------------------------------------------------------
+      // 2. ブロックタブの場合の処理
+      // ---------------------------------------------------------
+      if (type === "blocked") {
+        const { data, error } = await supabase
+          .from("connections")
+          .select(
+            `
+            id,
+            status,
+            target_profile:target_id (${profileSelect})
+          `
+          )
+          .eq("user_id", user.id)
+          .eq("status", "blocked");
+
+        if (error) throw error;
+
+        const formatted = (data || [])
+          .map((row: any) => ({
+            id: row.id,
+            displayProfile: row.target_profile,
+            isBlockData: true,
+          }))
+          .filter((item) => item.displayProfile !== null);
+
+        setList(formatted);
+        setLoading(false);
+        return;
+      }
+
+      // ---------------------------------------------------------
+      // 3. その他のタブ (friendships) の処理
+      // ---------------------------------------------------------
+      let query;
+
+      /** 友だち（accepted） */
+      if (type === "friends") {
+        query = supabase
+          .from("friendships")
+          .select(
+            `
+            id,
+            status,
+            requester:profiles!friendships_requester_id_fkey(${profileSelect}),
+            addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
+          `
+          )
+          .eq("status", "accepted")
+          .or(`requester_id.eq.${user.id},addressee_id.eq.${user.id}`);
+      }
+
+      /** 自分 → 相手（requested） */
+      if (type === "requested") {
+        query = supabase
+          .from("friendships")
+          .select(
+            `
+            id,
+            status,
+            addressee:profiles!friendships_addressee_id_fkey(${profileSelect})
+          `
+          )
+          .eq("requester_id", user.id)
+          .eq("status", "pending");
+      }
+
+      /** 相手 → 自分（pending） */
+      if (type === "pending") {
+        query = supabase
+          .from("friendships")
+          .select(
+            `
+            id,
+            status,
+            requester:profiles!friendships_requester_id_fkey(${profileSelect})
+          `
+          )
+          .eq("addressee_id", user.id)
+          .eq("status", "pending");
+      }
+
+      const { data, error } = await query!;
+      if (error) throw error;
+
+      // データ整形 & ブロック済みユーザーの除外
+      const formatted = (data || [])
+        .map((item: any) => {
+          // パートナー特定
+          let partner = null;
+          if (item.requester && item.addressee) {
+            partner =
+              item.requester.id === currentUser.id
+                ? item.addressee
+                : item.requester;
+          } else {
+            partner = item.requester || item.addressee;
+          }
+
+          // ★追加: ブロック済みの相手なら null を返して後でフィルタリングする
+          if (partner && blockedUserIds.has(partner.id)) {
+            return null;
+          }
+
+          return {
+            ...item,
+            displayProfile: partner,
+            isBlockData: false,
+          };
+        })
+        .filter((item: any) => item !== null); // nullを除外
+
+      setList(formatted);
+    } catch (e) {
+      console.error("❌ load error:", e);
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setList(data || []);
-    setLoading(false);
   };
 
   // ================================
-  // ★ 操作用関数（取り下げ / 承認 / 拒否）
+  // 操作用関数
   // ================================
 
   const cancelRequest = async (id: string) => {
@@ -135,35 +196,38 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
     loadList(tab);
   };
 
-  // ================================
-  // ★ 表示するパートナーを特定するヘルパー関数
-  // ================================
-  const getPartnerProfile = (item: any) => {
-    if (item.requester && item.addressee) {
-      return item.requester.id === currentUser.id
-        ? item.addressee
-        : item.requester;
+  const unblockUser = async (connectionId: string, name: string) => {
+    if (!window.confirm(`${name}さんのブロックを解除しますか？`)) return;
+    const { error } = await supabase
+      .from("connections")
+      .delete()
+      .eq("id", connectionId);
+
+    if (error) {
+      alert("解除に失敗しました");
+      console.error(error);
+    } else {
+      alert("ブロックを解除しました");
+      setList((prev) => prev.filter((item) => item.id !== connectionId));
     }
-    return item.requester || item.addressee;
+  };
+
+  const handleGoToProfile = (userId: string) => {
+    router.push(`/users/${userId}`);
   };
 
   // ================================
-  // ★ 重複排除処理
+  // 重複排除 (念のため)
   // ================================
   const uniqueList = Array.from(
     new Map(
       list.map((item) => {
-        const profile = getPartnerProfile(item);
+        const profile = item.displayProfile;
         const key = profile ? profile.id : item.id;
-        return [key, { ...item, displayProfile: profile }];
+        return [key, item];
       })
     ).values()
   );
-
-  // ★追加: プロフィール画面への遷移ハンドラ
-  const handleGoToProfile = (userId: string) => {
-    router.push(`/users/${userId}`);
-  };
 
   return (
     <div className="tab-wrapper">
@@ -194,12 +258,10 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
         ) : (
           uniqueList.map((item: any) => {
             const profile = item.displayProfile;
-
             if (!profile) return null;
 
             return (
-              <div key={profile.id} className="friend-item">
-                {/* ★修正: 画像をクリック可能に */}
+              <div key={item.id} className="friend-item">
                 <img
                   src={profile.avatar_url || "/placeholder-avatar.png"}
                   className="avatar"
@@ -208,8 +270,8 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
                     ((e.target as HTMLImageElement).src =
                       "/placeholder-avatar.png")
                   }
-                  onClick={() => handleGoToProfile(profile.id)} // クリックイベント追加
-                  style={{ cursor: "pointer" }} // カーソルをポインターに変更
+                  onClick={() => handleGoToProfile(profile.id)}
+                  style={{ cursor: "pointer" }}
                 />
                 <div className="user-info">
                   <strong>{profile.name}</strong>
@@ -235,7 +297,6 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
                     >
                       承認
                     </button>
-
                     <button
                       className="btn-reject"
                       onClick={() => rejectRequest(item.id)}
@@ -243,6 +304,16 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
                       拒否
                     </button>
                   </div>
+                )}
+
+                {tab === "blocked" && (
+                  <button
+                    className="btn-cancel"
+                    style={{ color: "red", borderColor: "red" }}
+                    onClick={() => unblockUser(item.id, profile.name)}
+                  >
+                    解除
+                  </button>
                 )}
               </div>
             );

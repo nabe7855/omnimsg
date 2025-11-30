@@ -33,6 +33,16 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
   const fetchAllData = useCallback(async () => {
     if (!currentUser) return;
 
+    // 0. ★追加: ブロックリスト取得
+    const { data: blockedData } = await supabase
+      .from("connections")
+      .select("target_id")
+      .eq("user_id", currentUser.id)
+      .eq("status", "blocked");
+
+    // ブロックしている相手のIDセットを作成
+    const blockedUserIds = new Set(blockedData?.map((b) => b.target_id) || []);
+
     // 1. 未読数
     const { data: unreadData } = await supabase.rpc("get_unread_count", {
       p_user_id: currentUser.id,
@@ -41,7 +51,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
     unreadData?.forEach((row: any) => uMap.set(row.room_id, row.unread_count));
     setUnreadMap(uMap);
 
-    // 2. ルーム一覧
+    // 2. ルーム一覧（自分が参加している）
     const { data: memberRows } = await supabase
       .from("room_members")
       .select("room_id")
@@ -65,6 +75,7 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
       return;
     }
 
+    // 3. ルーム情報の詳細取得
     const { data: roomsData } = await supabase
       .from("rooms")
       .select("*")
@@ -91,17 +102,21 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           return;
         }
 
-        // パートナー取得
+        // --- DMの場合：パートナー特定 ---
         let partner: Profile | undefined = undefined;
+        let partnerId: string | undefined;
+
+        // room_participants から相手を探す
         const { data: participants } = await supabase
           .from("room_participants")
           .select("user_id")
           .eq("room_id", room.id);
 
-        let partnerId = participants?.find(
+        partnerId = participants?.find(
           (p) => p.user_id !== currentUser.id
         )?.user_id;
 
+        // room_members から相手を探す（バックアップ）
         if (!partnerId) {
           const { data: members } = await supabase
             .from("room_members")
@@ -112,6 +127,11 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
           )?.profile_id;
         }
 
+        // ★追加: 相手がブロックリストに含まれている場合はスキップ（非表示）
+        if (partnerId && blockedUserIds.has(partnerId)) {
+          return;
+        }
+
         if (partnerId) {
           const { data: pData } = await supabase
             .from("profiles")
@@ -120,11 +140,13 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
             .single();
           partner = pData || undefined;
         }
+
+        // パートナーが存在する場合（退会していない等）のみ追加
         result.push({ ...room, partner });
       })
     );
 
-    // ソート
+    // ソート (更新日時順)
     result.sort(
       (a, b) =>
         new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -157,23 +179,24 @@ export const RoomListScreen: React.FC<ScreenProps> = ({
     fetchAllData();
   }, [currentUser, fetchAllData]);
 
-  // ▼ リアルタイム監視 (メッセージが来たら一覧を更新)
+  // ▼ リアルタイム監視
   useEffect(() => {
     if (!currentUser) return;
 
     const channel = supabase
       .channel("room-list-updates")
-.on(
-  "postgres_changes",
-  { event: "INSERT", schema: "public", table: "messages" },
-  (payload) => {
-    const newMsg = payload.new;
-    if (!newMsg) return;
-    if (newMsg.sender_id === currentUser.id) return; // ⭐ 追加
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const newMsg = payload.new as Message;
+          if (!newMsg) return;
+          // 自分が送ったメッセージの場合は更新不要（送信時に更新される想定、または即座に反映しなくてもよい）
+          if (newMsg.sender_id === currentUser.id) return;
 
-    fetchAllData();
-  }
-)
+          fetchAllData();
+        }
+      )
       .subscribe();
 
     return () => {
