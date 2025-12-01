@@ -4,9 +4,10 @@ import { supabase } from "@/lib/supabaseClient";
 import { ProfileProps } from "@/lib/types/screen";
 import "@/styles/profile.css";
 import imageCompression from "browser-image-compression";
+import Link from "next/link";
 import React, { useEffect, useRef, useState } from "react";
 
-// ▼ カメラアイコン
+// ▼ カメラアイコン（変更なし）
 const CameraIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -25,6 +26,29 @@ const CameraIcon = () => (
       strokeLinecap="round"
       strokeLinejoin="round"
       d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z"
+    />
+  </svg>
+);
+
+// ▼ 歯車アイコン（色をグレーに変更）
+const SettingsIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    strokeWidth={1.5}
+    stroke="currentColor"
+    style={{ width: "24px", height: "24px", color: "#666" }} // ★白背景でも見えるようにグレー(#666)に変更
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 0 1 0 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.212 1.281c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 0 1 0-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281Z"
+    />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
     />
   </svg>
 );
@@ -57,12 +81,9 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
     website_url: currentUser.website_url || "",
   });
 
-  // ==========================================
   // 初期表示時にDBから最新データを取得
-  // ==========================================
   useEffect(() => {
     const fetchLatestProfile = async () => {
-      // まずはpropsのデータで初期化
       setCurrentAvatarUrl(currentUser.avatar_url);
       setForm({
         name: currentUser.name || "",
@@ -74,7 +95,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         website_url: currentUser.website_url || "",
       });
 
-      // DBから最新情報を取得
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
@@ -95,7 +115,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         Object.assign(currentUser, data);
       }
     };
-
     fetchLatestProfile();
   }, [currentUser]);
 
@@ -126,7 +145,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
   const handleSave = async () => {
     if (isSaving) return;
     setIsSaving(true);
-
     let newAvatarUrl = currentAvatarUrl;
 
     try {
@@ -143,20 +161,15 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
             }
           }
         }
-
         const fileExt = avatarFile.name.split(".").pop();
         const fileName = `${currentUser.id}/${Date.now()}.${fileExt}`;
-
         const { error: uploadError } = await supabase.storage
           .from("avatars")
           .upload(fileName, avatarFile, { upsert: false });
-
         if (uploadError) throw uploadError;
-
         const { data: publicData } = supabase.storage
           .from("avatars")
           .getPublicUrl(fileName);
-
         newAvatarUrl = publicData.publicUrl;
       }
 
@@ -169,10 +182,8 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
         .eq("id", currentUser.id);
 
       if (updateError) throw updateError;
-
       Object.assign(currentUser, { ...form, avatar_url: newAvatarUrl });
       setCurrentAvatarUrl(newAvatarUrl);
-
       setIsEditing(false);
       setAvatarFile(null);
       setAvatarPreview(null);
@@ -201,56 +212,35 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
     });
   };
 
-  // ==========================================
-  // ★修正: アカウント削除機能（スマホ対応・強力キャッシュクリア版）
-  // ==========================================
   const handleDeleteAccount = async () => {
     if (
       !window.confirm(
-        "本当にアカウントを削除しますか？\nこの操作は取り消せません。\nログイン情報を含む全てのデータが完全に削除されます。"
+        "本当にアカウントを削除しますか？\nこの操作は取り消せません。"
       )
     ) {
       return;
     }
-
     try {
       setIsSaving(true);
-
-      // 1. APIルートを呼び出して削除実行
-      const response = await fetch("/api/delete-account", {
-        method: "DELETE",
-      });
-
+      const response = await fetch("/api/delete-account", { method: "DELETE" });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "削除に失敗しました");
       }
-
       alert("アカウントを削除しました。");
-
-      // 2. クライアント側の後始末（ここを強化）
       try {
-        // ダメ元でログアウトを試みる（エラーは無視）
         await supabase.auth.signOut();
       } catch (e) {
         console.log("SignOut skipped:", e);
       }
-
-      // 3. 【重要】ローカルストレージの強力な消去
-      // Supabaseのトークンが入っているキー("sb-xxxx-auth-token")を探して消す
       Object.keys(localStorage).forEach((key) => {
         if (key.startsWith("sb-") || key.includes("supabase")) {
           localStorage.removeItem(key);
         }
       });
-      // 念のため全消去
       localStorage.clear();
       sessionStorage.clear();
-
-      // 4. 少し待ってから強制リロード遷移
-      // スマホだとストレージ消去の反映が遅れることがあるため
       setTimeout(() => {
-        // replaceを使うことで「戻る」ボタンで戻れなくする
         window.location.replace("/login");
       }, 500);
     } catch (error: any) {
@@ -267,8 +257,10 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
   const displayRole = currentUser.role?.toUpperCase() || "USER";
 
   return (
-    <div className="profile-screen">
-      <h2 className="profile-heading">マイページ</h2>
+    <div className="profile-screen" style={{ position: "relative" }}>
+      {" "}
+      {/* ★念のためrelative追加 */}
+      {/* 右上の絶対配置アイコンは削除しました（ヘッダーと被るため） */}
       {/* ====== Hero（背景 ＋ アバター） ====== */}
       <div className="profile-hero-bg">
         <div
@@ -314,12 +306,44 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
           )}
         </div>
       </div>
-
       <div className="profile-info-center">
-        <h3 className="profile-name">{form.name || currentUser.name}</h3>
+        {/* ▼▼▼ 名前と設定アイコンを横並びにする ▼▼▼ */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+          }}
+        >
+          <h3 className="profile-name" style={{ margin: 0 }}>
+            {form.name || currentUser.name}
+          </h3>
+
+          {/* 歯車アイコン（ここなら絶対に隠れません） */}
+          {!isEditing && (
+            <div
+              onClick={() => {
+                const settingSection =
+                  document.getElementById("profile-settings");
+                if (settingSection) {
+                  settingSection.scrollIntoView({ behavior: "smooth" });
+                }
+              }}
+              style={{
+                cursor: "pointer",
+                padding: "4px",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <SettingsIcon />
+            </div>
+          )}
+        </div>
+
         <span className="profile-role-badge">{displayRole}</span>
       </div>
-
       {!isEditing && (
         <>
           <div className="profile-cards">
@@ -348,17 +372,14 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
                   <label>営業時間</label>
                   <div>{form.business_hours || "未設定"}</div>
                 </div>
-
                 <div className="profile-card">
                   <label>住所</label>
                   <div>{form.address || "未設定"}</div>
                 </div>
-
                 <div className="profile-card">
                   <label>電話番号</label>
                   <div>{form.phone_number || "未設定"}</div>
                 </div>
-
                 <div className="profile-card">
                   <label>ホームページURL</label>
                   <div>
@@ -382,6 +403,62 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
                 </div>
               </>
             )}
+
+            {/* ▼▼▼ アプリ情報・設定セクション ▼▼▼ */}
+            <div
+              id="profile-settings"
+              style={{ marginTop: "30px", marginBottom: "10px" }}
+            >
+              <h4
+                style={{
+                  fontSize: "14px",
+                  color: "#888",
+                  marginBottom: "8px",
+                  paddingLeft: "4px",
+                }}
+              >
+                アプリ情報・設定
+              </h4>
+
+              {/* 利用規約リンク */}
+              <Link href="/terms" style={{ textDecoration: "none" }}>
+                <div
+                  className="profile-card"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ color: "#333" }}>利用規約</span>
+                  <span style={{ color: "#bbb", fontSize: "18px" }}>
+                    &rsaquo;
+                  </span>
+                </div>
+              </Link>
+
+              {/* 外部送信規律リンク */}
+              <Link
+                href="/external-transmission"
+                style={{ textDecoration: "none" }}
+              >
+                <div
+                  className="profile-card"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    cursor: "pointer",
+                  }}
+                >
+                  <span style={{ color: "#333" }}>情報外部送信について</span>
+                  <span style={{ color: "#bbb", fontSize: "18px" }}>
+                    &rsaquo;
+                  </span>
+                </div>
+              </Link>
+            </div>
           </div>
 
           <button
@@ -395,7 +472,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
             ログアウト
           </button>
 
-          {/* ★ アカウント削除ボタン */}
           <button
             onClick={handleDeleteAccount}
             style={{
@@ -414,7 +490,6 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
           </button>
         </>
       )}
-
       {isEditing && (
         <>
           <div className="edit-form">
@@ -460,21 +535,18 @@ export const ProfileScreen: React.FC<ProfileProps> = ({
                   }
                   disabled={isSaving}
                 />
-
                 <label>住所</label>
                 <input
                   value={form.address}
                   onChange={(e) => updateField("address", e.target.value)}
                   disabled={isSaving}
                 />
-
                 <label>電話番号</label>
                 <input
                   value={form.phone_number}
                   onChange={(e) => updateField("phone_number", e.target.value)}
                   disabled={isSaving}
                 />
-
                 <label>ホームページURL</label>
                 <input
                   value={form.website_url}
