@@ -3,9 +3,12 @@
     /* === 基本設定 === */
     "target": "ES2022",
     "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-
-    /* === Next.js 用 === */
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    /* === Next.js & Bundler 設定 === */
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "incremental": true,
@@ -17,25 +20,28 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-
-    /* === デコレーター・クラスフィールド === */
+    "moduleDetection": "force",
+    /* === AIコード互換用（デコレータ・クラス設定） === */
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
-
-    /* === パスエイリアス === */
+    /* === パスエイリアス（修正箇所） === */
+    /* srcフォルダを使わない構成に合わせて "./*" に戻しました */
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     },
-
-    /* === Next.js の型補完 === */
-    "types": ["node"],
+    /* === Next.js プラグイン === */
+    "types": [
+      "node"
+    ],
     "plugins": [
       {
         "name": "next"
       }
     ]
   },
-
   "include": [
     "next-env.d.ts",
     "**/*.ts",
@@ -44,6 +50,8 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"
   ],
-
-  "exclude": ["node_modules", "supabase"]
+  "exclude": [
+    "node_modules",
+    "supabase"
+  ]
 }

@@ -4,12 +4,129 @@ import { APP_NAME } from "@/constants";
 import { supabase } from "@/lib/supabaseClient";
 import { UserRole } from "@/lib/types";
 import { LoginProps } from "@/lib/types/screen";
-import { useSearchParams } from "next/navigation"; // ★追加
+import Link from "next/link"; // ★追加: 規約リンク用
+import { useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
 // 店舗用のデフォルトアイコン
 const DEFAULT_STORE_ICON = "/default-store.jpg";
 
+// ==========================================
+// ★追加: 外部送信同意ポップアップコンポーネント
+// ==========================================
+const ExternalTransmissionConsentModal = ({
+  onConfirm,
+  onCancel,
+}: {
+  onConfirm: () => void;
+  onCancel: () => void;
+}) => {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0,0,0,0.6)", // 背景を少し暗く
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px",
+      }}
+      onClick={onCancel} // 背景クリックで閉じる
+    >
+      <div
+        style={{
+          backgroundColor: "white",
+          padding: "24px",
+          borderRadius: "16px",
+          maxWidth: "400px",
+          width: "100%",
+          boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+          animation: "fadeIn 0.2s ease-out",
+        }}
+        onClick={(e) => e.stopPropagation()} // 中身クリックでは閉じない
+      >
+        <h3
+          style={{
+            fontSize: "18px",
+            fontWeight: "bold",
+            marginBottom: "16px",
+            textAlign: "center",
+            color: "#333",
+          }}
+        >
+          利用者情報の外部送信について
+        </h3>
+        <div
+          style={{
+            fontSize: "14px",
+            lineHeight: "1.6",
+            marginBottom: "24px",
+            color: "#555",
+            maxHeight: "60vh",
+            overflowY: "auto",
+          }}
+        >
+          <p style={{ marginBottom: "12px" }}>
+            当アプリは、広告配信および利用状況分析のために、お客様の端末情報や閲覧履歴などの利用者情報を、Google等の第三者企業へ送信します。
+          </p>
+          <p>
+            詳細については「
+            <Link
+              href="/external-transmission"
+              target="_blank"
+              style={{ color: "#6b46c1", textDecoration: "underline" }}
+            >
+              情報外部送信について
+            </Link>
+            」をご確認ください。
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: "12px" }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1,
+              padding: "12px",
+              borderRadius: "8px",
+              border: "1px solid #ddd",
+              background: "#f8f9fa",
+              color: "#666",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            キャンセル
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              flex: 1,
+              padding: "12px",
+              borderRadius: "8px",
+              border: "none",
+              background: "#6b46c1",
+              color: "#fff",
+              fontWeight: "bold",
+              cursor: "pointer",
+              boxShadow: "0 2px 4px rgba(107, 70, 193, 0.3)",
+            }}
+          >
+            同意して登録
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// メインコンポーネント
+// ==========================================
 export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [isRegister, setIsRegister] = useState(false);
@@ -21,10 +138,15 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
   const [selectedIconId, setSelectedIconId] = useState<number>(1);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // ★追加: 再送信ボタンの表示管理
+  // ★追加: 規約同意チェックボックスの状態
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  // ★追加: 外部送信同意ポップアップの表示状態
+  const [showExternalConsent, setShowExternalConsent] = useState(false);
+
+  // 再送信ボタンの表示管理
   const [showResend, setShowResend] = useState(false);
 
-  // ★追加: URLパラメータのエラーチェック
+  // URLパラメータのエラーチェック
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -36,7 +158,6 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
         "認証リンクの有効期限が切れているか、既に使用されています。\nログインを試みて、メール未確認の場合は再送信を行ってください。"
       );
     } else if (errorDescription) {
-      // その他のエラー（アクセストークン不正など）
       console.error("Auth Error:", errorDescription);
     }
   }, [searchParams]);
@@ -48,7 +169,8 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     setPassword("");
     setName("");
     setSelectedIconId(1);
-    setShowResend(false); // リセット
+    setShowResend(false);
+    setAgreedToTerms(false); // リセット
   };
 
   const handleBack = () => {
@@ -56,7 +178,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     setShowResend(false);
   };
 
-  // ★追加: 確認メール再送信処理
+  // 確認メール再送信処理
   const handleResendEmail = async () => {
     if (!email) return alert("メールアドレスを入力してください");
 
@@ -72,7 +194,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
 
       if (error) throw error;
       alert("確認メールを再送信しました。メールボックスを確認してください。");
-      setShowResend(false); // ボタンを隠す
+      setShowResend(false);
     } catch (e: any) {
       alert("再送信に失敗しました: " + e.message);
     } finally {
@@ -80,28 +202,43 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
-  // ==========================================================
-  // 🚀 Supabase 認証処理
-  // ==========================================================
-  const handleSubmit = async () => {
+  // ★追加: 登録ボタンが押されたときの処理（ポップアップ表示判断）
+  const handlePreSubmit = () => {
     if (!email || !password) {
       alert("メールアドレスとパスワードを入力してください");
       return;
     }
-    if (isRegister && !name) {
-      alert("お名前を入力してください");
-      return;
-    }
-    if (!selectedRole) return;
 
+    if (isRegister) {
+      // 新規登録の場合のチェック
+      if (!name) {
+        alert("お名前を入力してください");
+        return;
+      }
+      if (!agreedToTerms) {
+        alert("利用規約への同意が必要です");
+        return;
+      }
+      // 新規登録なら、ここで外部送信の同意ポップアップを出す
+      setShowExternalConsent(true);
+    } else {
+      // ログインならそのまま実行
+      handleSubmit(false);
+    }
+  };
+
+  // ==========================================================
+  // 🚀 Supabase 認証処理 (メイン)
+  // ==========================================================
+  const handleSubmit = async (isNewRegistration: boolean) => {
     setIsProcessing(true);
-    setShowResend(false); // 初期化
+    setShowResend(false);
 
     try {
       // ---------------------------
       // ① 新規登録の場合
       // ---------------------------
-      if (isRegister) {
+      if (isNewRegistration) {
         const redirectTo = `${window.location.origin}/auth/callback`;
 
         let initialAvatarUrl = "";
@@ -110,6 +247,9 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
         } else if (selectedRole === UserRole.USER) {
           initialAvatarUrl = `/default-user/${selectedIconId}.png`;
         }
+
+        // 現在時刻（同意日時として記録）
+        const now = new Date().toISOString();
 
         const { error } = await supabase.auth.signUp({
           email,
@@ -120,6 +260,9 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
               name: name,
               role: selectedRole,
               avatar_url: initialAvatarUrl,
+              // ★メタデータとして同意日時を送信 (DBトリガーでprofilesテーブルへ保存する想定)
+              agreed_to_terms_at: now,
+              agreed_to_external_transmission_at: now,
             },
           },
         });
@@ -131,8 +274,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
         );
 
         setIsRegister(false);
-        setIsProcessing(false);
-        return;
+        setShowExternalConsent(false); // モーダル閉じる
       }
 
       // ---------------------------
@@ -145,10 +287,9 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
         });
 
         if (error) {
-          // メール未確認エラーの場合
           if (error.message.includes("Email not confirmed")) {
             alert("メールアドレスが確認されていません。");
-            setShowResend(true); // ★再送信ボタンを表示
+            setShowResend(true); // 再送信ボタンを表示
           } else if (error.message.includes("Invalid login credentials")) {
             alert("メールアドレスまたはパスワードが間違っています。");
           } else {
@@ -157,7 +298,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           return;
         }
 
-        await onLogin(selectedRole, "login", email, password, name);
+        await onLogin(selectedRole!, "login", email, password, name);
       }
     } catch (err: any) {
       alert(err.message || "処理に失敗しました");
@@ -166,11 +307,11 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
-  // ... (roleLabels, isCast 定義などはそのまま) ...
   const roleLabels: Record<UserRole, string> = {
     [UserRole.USER]: "一般ユーザー",
     [UserRole.CAST]: "キャスト",
     [UserRole.STORE]: "店舗",
+    [UserRole.ADMIN]: "管理人",
   };
 
   const isCast = selectedRole === UserRole.CAST;
@@ -182,6 +323,7 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           <h1 className="login-app-title">{APP_NAME}</h1>
           <p className="login-app-subtitle">
             WEBだけでサクッとつながるコミュニケーション
+            <br />
             あなたのビジネスを守る保険としてのチャットツール
           </p>
           <p className="login-role-label">利用方法を選択してください</p>
@@ -212,6 +354,14 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
 
   return (
     <div className="login-screen login-screen-form">
+      {/* ★追加: 外部送信同意モーダル */}
+      {showExternalConsent && (
+        <ExternalTransmissionConsentModal
+          onConfirm={() => handleSubmit(true)} // 同意したら登録処理実行
+          onCancel={() => setShowExternalConsent(false)}
+        />
+      )}
+
       <button onClick={handleBack} className="login-back-button" type="button">
         <span className="login-back-icon">←</span>
         <span>戻る</span>
@@ -300,19 +450,58 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
           />
         </div>
 
+        {/* ★追加: 利用規約同意チェックボックス (新規登録時のみ) */}
+        {isRegister && (
+          <div
+            style={{ margin: "20px 0", fontSize: "14px", lineHeight: "1.5" }}
+          >
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: "8px",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                style={{ marginTop: "4px" }}
+              />
+              <span style={{ color: "#333" }}>
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  style={{ color: "#007aff", textDecoration: "underline" }}
+                  onClick={(e) => e.stopPropagation()} // リンククリックでチェックボックスが反応しないように
+                >
+                  利用規約
+                </Link>
+                （ログ確認・削除権限等を含む）に同意します。
+              </span>
+            </label>
+          </div>
+        )}
+
+        {/* 登録ボタン（プレチェック関数を呼ぶように変更） */}
         <button
-          onClick={handleSubmit}
-          disabled={isProcessing}
+          onClick={handlePreSubmit}
+          disabled={isProcessing || (isRegister && !agreedToTerms)} // ★規約未同意なら無効化
           className="login-submit-button"
+          style={{
+            opacity: isRegister && !agreedToTerms ? 0.5 : 1,
+            cursor: isRegister && !agreedToTerms ? "not-allowed" : "pointer",
+          }}
         >
           {isProcessing
             ? "処理中..."
             : isRegister
-            ? "アカウント作成"
+            ? "次へ" // ★変更: ポップアップが出るため
             : "ログイン"}
         </button>
 
-        {/* ★追加: 再送信ボタン（ログイン失敗時に表示） */}
+        {/* 再送信ボタン（ログイン失敗時に表示） */}
         {showResend && !isRegister && (
           <div style={{ marginTop: "15px", textAlign: "center" }}>
             <p style={{ fontSize: "12px", color: "red", marginBottom: "5px" }}>
@@ -346,7 +535,8 @@ export const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
             <button
               onClick={() => {
                 setIsRegister(!isRegister);
-                setShowResend(false); // 切り替え時に隠す
+                setShowResend(false);
+                setAgreedToTerms(false); // 切り替え時にリセット
               }}
               className="login-toggle-link"
             >

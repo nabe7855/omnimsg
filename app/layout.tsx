@@ -41,6 +41,16 @@ export default function RootLayout({
 
   usePushSubscription(currentUser?.id);
 
+  // ★追加: 管理者ページ (/admin) の場合は、アプリ全体の共通レイアウトを適用せず
+  // そのまま children を返す (admin/layout.tsx に任せる)
+  if (pathname?.startsWith("/admin")) {
+    return (
+      <html lang="ja">
+        <body>{children}</body>
+      </html>
+    );
+  }
+
   if (!loaded) {
     return (
       <html lang="ja">
@@ -104,7 +114,6 @@ export default function RootLayout({
     currentUser && footerItems.length > 0 && pathname !== "/login";
 
   // ★設定アイコンクリック時の動作
-  // ProfileScreenにある id="profile-settings" までスクロールさせる
   const handleSettingsClick = () => {
     const settingSection = document.getElementById("profile-settings");
     if (settingSection) {

@@ -1,11 +1,4 @@
-/**
- * ユーザーの役割（ロール）
- */
-export enum UserRole {
-  USER = "user",
-  CAST = "cast",
-  STORE = "store",
-}
+import { UserRole } from "@/lib/types";
 
 /**
  * Profile（プロファイル）データ
