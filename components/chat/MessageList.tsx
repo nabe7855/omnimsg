@@ -8,15 +8,14 @@ type Props = {
   isGroup: boolean;
   onScrollToBottom: () => void;
   onDeleteMessage: (msg: Message) => void;
-  // ★追加: リッチメニューが表示されているかを受け取る
   hasRichMenu: boolean;
 };
 
 const BOTTOM_THRESHOLD_PX = 80;
 
 // ★設定: デザインに合わせて高さを調整してください
-const INPUT_BAR_HEIGHT = 150; // 入力バーの高さ + 余白
-const RICH_MENU_HEIGHT = 100; // リッチメニューの高さ (使用している画像の高さ等に合わせてください)
+const INPUT_BAR_HEIGHT = 150;
+const RICH_MENU_HEIGHT = 100;
 
 export const MessageList: React.FC<Props> = ({
   messages,
@@ -30,23 +29,14 @@ export const MessageList: React.FC<Props> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // ボタンの表示状態
   const [showScrollButton, setShowScrollButton] = useState(false);
 
-  // 現在が最下部付近かどうかを判定する
   const checkIfBottom = () => {
     if (!containerRef.current) return;
     const { scrollTop, clientHeight, scrollHeight } = containerRef.current;
-
-    // 最下部から一定距離以内なら「最下部」とみなす
     const isBottom =
       scrollTop + clientHeight >= scrollHeight - BOTTOM_THRESHOLD_PX;
-
-    // 最下部にいないならボタンを表示
     setShowScrollButton(!isBottom);
-
-    // ※ここは「ユーザーが既に最下部を見ている状態で新しいメッセージが来た時」用です。
-    //  初期表示ではスクロールさせたくないため、useEffect側で制御しています。
     if (isBottom) {
       onScrollToBottom();
     }
@@ -56,15 +46,11 @@ export const MessageList: React.FC<Props> = ({
     checkIfBottom();
   };
 
-  // メッセージ更新時の処理
   useEffect(() => {
-    // 画面を開いた直後やメッセージ追加時に「ボタンを出すべきか」だけ判定する。
-    // 強制スクロールはさせないため、scrollToBottomはここでは呼ばない。
     checkIfBottom();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
-  // ボタンを押した時に最下部へスクロールする
   const scrollToBottom = () => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -93,8 +79,6 @@ export const MessageList: React.FC<Props> = ({
     );
   }
 
-  // ★ボタンの位置計算
-  // リッチメニューがある場合は、その高さ分だけボタン位置を上げる
   const buttonBottomPosition = hasRichMenu
     ? INPUT_BAR_HEIGHT + RICH_MENU_HEIGHT
     : INPUT_BAR_HEIGHT;
@@ -122,7 +106,6 @@ export const MessageList: React.FC<Props> = ({
             style={{
               display: "flex",
               width: "100%",
-              // 自分の時は 'row-reverse' にして右寄せ
               flexDirection: isMe ? "row-reverse" : "row",
               justifyContent: "flex-start",
               marginBottom: "10px",
@@ -157,9 +140,18 @@ export const MessageList: React.FC<Props> = ({
                     ? "chat-bubble-me"
                     : "chat-bubble-other"
                 }
+                // ▼▼▼ ここを修正しました ▼▼▼
                 style={
-                  isImage ? { padding: "4px", background: "transparent" } : {}
+                  isImage
+                    ? { padding: "4px", background: "transparent" }
+                    : {
+                        // 日本語の自然な改行を実現する設定
+                        whiteSpace: "pre-wrap", // 改行コードは維持し、幅に合わせて折り返す
+                        wordBreak: "normal", // 単語の途中での不自然な改行を防ぐ
+                        overflowWrap: "break-word", // URLなど長い単語は枠内で折り返す
+                      }
                 }
+                // ▲▲▲ 修正ここまで ▲▲▲
               >
                 {isImage ? (
                   <div
@@ -250,13 +242,11 @@ export const MessageList: React.FC<Props> = ({
 
       <div ref={endRef} />
 
-      {/* 最新チャットへ飛ぶボタン */}
       {showScrollButton && (
         <button
           onClick={scrollToBottom}
           style={{
             position: "fixed",
-            // ★計算した位置を適用
             bottom: `${buttonBottomPosition}px`,
             right: "20px",
             width: "40px",
@@ -272,7 +262,7 @@ export const MessageList: React.FC<Props> = ({
             fontSize: "18px",
             color: "#555",
             zIndex: 1000,
-            transition: "bottom 0.3s ease", // 位置が変わる際のアニメーション
+            transition: "bottom 0.3s ease",
           }}
         >
           ↓
