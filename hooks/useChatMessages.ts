@@ -7,20 +7,30 @@ export const useChatMessages = (roomId: string, currentUser: any) => {
   const lastMarkReadTimeRef = useRef<number>(0);
 
   useEffect(() => {
+    // roomIdがない場合は何もしない
     if (!roomId) return;
 
+    // 1. 初回読み込み
     const loadMessages = async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("messages")
-        .select("*")
+        .select("*, sender:users(*)") // 送信者の情報も必要なら結合
         .eq("room_id", roomId)
         .order("created_at", { ascending: true });
-      if (data) setMessages(data);
+
+      if (error) {
+        console.error("メッセージ取得エラー:", error);
+      } else if (data) {
+        setMessages(data);
+      }
     };
     loadMessages();
 
+    // 2. リアルタイム購読の設定
+    console.log(`📡 Realtime接続試行: Room ID = ${roomId}`);
+
     const channel = supabase
-      .channel(`room:${roomId}`)
+      .channel(`room:${roomId}`) // チャンネル名は一意であれば何でもOK
       .on(
         "postgres_changes",
         {
@@ -30,19 +40,39 @@ export const useChatMessages = (roomId: string, currentUser: any) => {
           filter: `room_id=eq.${roomId}`,
         },
         (payload) => {
+          console.log("🔔 メッセージ受信:", payload);
           const newMsg = payload.new as Message;
-          setMessages((prev) =>
-            prev.some((m) => m.id === newMsg.id) ? prev : [...prev, newMsg]
-          );
+
+          setMessages((prev) => {
+            // 重複チェック: 既にIDが存在する場合は追加しない
+            if (prev.some((m) => m.id === newMsg.id)) {
+              return prev;
+            }
+            return [...prev, newMsg];
+          });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        // ここで接続状態を確認できます
+        if (status === "SUBSCRIBED") {
+          console.log("✅ Realtime接続成功: 待機中...");
+        } else if (status === "CHANNEL_ERROR") {
+          console.error(
+            "❌ Realtime接続エラー: 権限やネットワークを確認してください"
+          );
+        } else if (status === "TIMED_OUT") {
+          console.error("⚠️ Realtime接続タイムアウト");
+        }
+      });
 
+    // クリーンアップ
     return () => {
+      console.log("🧹 チャンネル切断");
       supabase.removeChannel(channel);
     };
   }, [roomId]);
 
+  // 既読処理（変更なし）
   const markAsRead = async () => {
     if (!currentUser || !roomId) return;
     const now = Date.now();
@@ -78,12 +108,10 @@ export const useChatMessages = (roomId: string, currentUser: any) => {
         read_at: new Date().toISOString(),
       }));
 
-      await supabase
-        .from("message_reads")
-        .upsert(insertData, {
-          onConflict: "message_id, user_id",
-          ignoreDuplicates: true,
-        });
+      await supabase.from("message_reads").upsert(insertData, {
+        onConflict: "message_id, user_id",
+        ignoreDuplicates: true,
+      });
     } catch (e) {
       console.error("既読処理エラー:", e);
     }
