@@ -1,13 +1,14 @@
-// app/layout.tsx
+// src/app/layout.tsx
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import "@/styles/layout.css";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import "./globals.css";
 
-// ▼ 歯車アイコン（ヘッダー用）
+// 歯車アイコン
 const SettingsIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -15,7 +16,7 @@ const SettingsIcon = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    style={{ width: "24px", height: "24px", color: "#333" }} // ヘッダーの文字色に合わせる
+    style={{ width: "24px", height: "24px", color: "#333" }}
   >
     <path
       strokeLinecap="round"
@@ -41,8 +42,34 @@ export default function RootLayout({
 
   usePushSubscription(currentUser?.id);
 
-  // ★追加: 管理者ページ (/admin) の場合は、アプリ全体の共通レイアウトを適用せず
-  // そのまま children を返す (admin/layout.tsx に任せる)
+  // ▼ 強制リダイレクト処理（修正版）
+  useEffect(() => {
+    // まだ認証情報がロードされていない、あるいはログアウト状態なら何もしない
+    if (!loaded || !currentUser) return;
+
+    // キャストの場合のみチェック
+    if (currentUser.role?.toLowerCase() === "cast") {
+      const hasAgreed =
+        !!currentUser.agreed_to_terms_at &&
+        !!currentUser.agreed_to_external_transmission_at;
+
+      // 未同意の場合
+      if (!hasAgreed) {
+        // 現在地が「同意画面」でなければ飛ばす
+        if (pathname !== "/cast/agreements") {
+          router.replace("/cast/agreements");
+        }
+      }
+      // ★追加: 同意済みの場合
+      else {
+        // もし同意画面にアクセスしてしまったらホームへ戻す（逆方向のガード）
+        if (pathname === "/cast/agreements") {
+          router.replace("/home");
+        }
+      }
+    }
+  }, [currentUser, loaded, pathname, router]);
+
   if (pathname?.startsWith("/admin")) {
     return (
       <html lang="ja">
@@ -51,11 +78,31 @@ export default function RootLayout({
     );
   }
 
+  // 同意画面専用レイアウト
+  if (pathname === "/cast/agreements") {
+    return (
+      <html lang="ja">
+        <body>{children}</body>
+      </html>
+    );
+  }
+
+  // ローディング画面
   if (!loaded) {
     return (
       <html lang="ja">
         <body>
-          <div className="app-container" />
+          <div
+            className="app-container"
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              height: "100vh",
+            }}
+          >
+            <p>読み込み中...</p>
+          </div>
         </body>
       </html>
     );
@@ -78,7 +125,15 @@ export default function RootLayout({
   const getFooterItems = () => {
     if (!currentUser) return [];
 
-    const role = currentUser.role;
+    const role = currentUser.role?.toLowerCase();
+
+    // キャストかつ未同意の場合はフッターを出さない
+    if (role === "cast") {
+      const hasAgreed =
+        !!currentUser.agreed_to_terms_at &&
+        !!currentUser.agreed_to_external_transmission_at;
+      if (!hasAgreed) return [];
+    }
 
     if (role === "user") {
       return [
@@ -110,10 +165,10 @@ export default function RootLayout({
   };
 
   const footerItems = getFooterItems();
+  // ログイン画面以外かつフッター項目がある場合に表示
   const shouldShowFooter =
     currentUser && footerItems.length > 0 && pathname !== "/login";
 
-  // ★設定アイコンクリック時の動作
   const handleSettingsClick = () => {
     const settingSection = document.getElementById("profile-settings");
     if (settingSection) {
@@ -125,7 +180,6 @@ export default function RootLayout({
     <html lang="ja">
       <body>
         <div className="app-container">
-          {/* Header */}
           <header className="app-header">
             {pathname !== "/login" && (
               <button className="back-btn" onClick={() => router.back()}>
@@ -138,7 +192,6 @@ export default function RootLayout({
             <div className="header-right">
               {currentUser && (
                 <>
-                  {/* ★ プロフィール画面の場合: 歯車アイコンを表示 */}
                   {pathname === "/profile" ? (
                     <button
                       onClick={handleSettingsClick}
@@ -154,7 +207,6 @@ export default function RootLayout({
                       <SettingsIcon />
                     </button>
                   ) : (
-                    /* ★ それ以外の場合: ユーザー名を表示 */
                     <button
                       className="logout-btn"
                       onClick={() => router.push("/profile")}
@@ -167,10 +219,8 @@ export default function RootLayout({
             </div>
           </header>
 
-          {/* Main */}
           <main className="app-main content-area">{children}</main>
 
-          {/* Bottom Nav */}
           {shouldShowFooter && (
             <nav className="bottom-nav">
               {footerItems.map((item) => (

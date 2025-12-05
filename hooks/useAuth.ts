@@ -12,75 +12,80 @@ export const useAuth = () => {
   const [currentUser, setCurrentUser] = useState<Profile | null>(null);
   const [loaded, setLoaded] = useState(false);
 
-  // 共通のユーザー情報取得ロジック
   const fetchAndSetUser = async (session: Session | null) => {
-    // セッションがない場合はクリアして表示許可
+    // セッションがない場合
     if (!session?.user) {
       setCurrentUser(null);
       setLoaded(true);
       return;
     }
 
-    // 1. まず手元にある情報（メタデータ）だけで一旦ユーザー情報をセットする
-    //    これで画面を即座に表示できます
     const userId = session.user.id;
     const meta = session.user.user_metadata;
 
-    setCurrentUser({
+    // 1. ベースの情報をセット（Auth情報から仮作成）
+    // ※ ここに agreed_to_terms_at などが含まれていないのがバグの元でした
+    let profileData: Profile = {
       id: userId,
       email: session.user.email!,
       name: meta.name || "",
       role: meta.role as UserRole,
       avatar_url: meta.avatar_url || "",
-      display_id: meta.display_id || "", // メタデータになければ一旦空文字
+      display_id: meta.display_id || "",
       bio: meta.bio || "",
-    });
-    setLoaded(true); // ★ここで画面ロック解除！
+      // 型定義(Profile)に存在するオプショナルなプロパティも初期化しておくと安全ですが、
+      // 下記のDB同期で上書きされるため、ここでは最低限でOK
+    };
 
-    // 2. 裏側でDBから最新のプロフィール情報（IDや自己紹介）を取得して上書きする
-    //    (roleがあってもなくても、常に最新情報を同期するのが安全です)
-    console.log("Fetching latest profile from DB...");
+    // console.log("Fetching latest profile from DB...");
 
-    supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", userId)
-      .maybeSingle()
-      .then(({ data: profile, error }) => {
-        if (error) {
-          console.error("DB Error:", error);
-        }
-        if (profile) {
-          console.log("Profile sync success:", profile);
+    try {
+      // 2. DBから最新情報を取得
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
 
-          // 取得したデータで情報を更新
-          setCurrentUser((prev) => {
-            if (!prev) return null;
-            return {
-              ...prev,
-              // DBにデータがあればそれを使い、なければ今のまま
-              role: (profile.role as UserRole) || prev.role,
-              name: profile.name || prev.name,
-              display_id: profile.display_id || prev.display_id, // ★ここでIDが入る！
-              bio: profile.bio || prev.bio,
-              avatar_url: profile.avatar_url || prev.avatar_url,
-            };
-          });
-        }
-      });
+      if (error) {
+        console.error("DB Error:", error);
+      }
+
+      if (profile) {
+        // console.log("Profile sync success:", profile);
+
+        // ★修正ポイント:
+        // 手動でプロパティを指定するのではなく、DBから取れた profile の中身を
+        // 全てスプレッド構文 (...profile) で上書きします。
+        // これにより agreed_to_terms_at や store_id 等も確実に state に入ります。
+        profileData = {
+          ...profileData,
+          ...profile, // ← これでDBの全カラムが反映されます
+        };
+      }
+    } catch (e) {
+      console.error("Fetch error:", e);
+    } finally {
+      // 3. 全てのデータ取得が終わってから State を更新し、ロード完了とする
+      setCurrentUser(profileData);
+      setLoaded(true);
+    }
   };
 
-  // ============================================
-  // ★ 監視リスナーを設定
-  // ============================================
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
       try {
+        // セキュリティ警告回避のため getUser を推奨しますが、
+        // 既存ロジックを維持しつつ安全にチェックします
         const {
           data: { session },
+          error,
         } = await supabase.auth.getSession();
+
+        if (error) throw error;
+
         if (mounted) {
           await fetchAndSetUser(session);
         }
@@ -111,9 +116,6 @@ export const useAuth = () => {
     };
   }, []);
 
-  // ============================================
-  // ★ ログイン / 新規登録
-  // ============================================
   const login = async (
     role: UserRole,
     mode: "login" | "register",
@@ -144,12 +146,13 @@ export const useAuth = () => {
         return;
       }
 
+      // ログイン成功時のリダイレクト先
       const startPath =
         role === UserRole.STORE
           ? "/store/casts"
           : role === UserRole.USER
           ? "/home"
-          : "/talks";
+          : "/home"; // キャストもhomeへ
 
       router.push(startPath);
     } catch (error) {

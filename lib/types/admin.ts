@@ -47,6 +47,8 @@ export interface User {
   lastLoginAt: string;
   reportCount: number; // 被通報回数
   avatarUrl: string;
+  agreed_to_terms_at?: string | null; // または Date
+  agreed_to_external_transmission_at?: string | null;
 }
 
 export interface Report {

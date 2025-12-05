@@ -1,12 +1,11 @@
 "use client";
 
 import { supabase } from "@/lib/supabaseClient";
-import { Profile, UserRole } from "@/lib/types";
+import { Profile } from "@/lib/types";
 import { ScreenProps } from "@/lib/types/screen";
-import { createClient } from "@supabase/supabase-js";
 import React, { useCallback, useEffect, useState } from "react";
 
-// ▼ 追加: 展開時のデータ型
+// ▼ 展開時のデータ型
 type CastRelations = {
   friends: Profile[];
   blockedFriends: Profile[];
@@ -24,7 +23,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   const [newPass, setNewPass] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // ▼ 追加: 展開機能用のステート
+  // ▼ 展開機能用のステート
   const [expandedCastId, setExpandedCastId] = useState<string | null>(null);
   const [castRelations, setCastRelations] = useState<CastRelations | null>(
     null
@@ -41,17 +40,30 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
     [navigate]
   );
 
+  // ▼▼▼ 追加: 未ログインならログイン画面へリダイレクト ▼▼▼
+  useEffect(() => {
+    // currentUserがnull（未ログイン）の場合、自動でログインへ戻す
+    // ※親コンポーネントでロード完了(loaded)を確認してからレンダリングされている前提
+    if (!currentUser) {
+      safeNavigate("/login");
+    }
+  }, [currentUser, safeNavigate]);
+
   // -----------------------------
   // 1. キャスト読み込み
   // -----------------------------
   const fetchCasts = useCallback(async () => {
-    if (!currentUser || currentUser.role !== UserRole.STORE) return;
+    if (!currentUser?.id) return;
+
+    // ▼▼▼ 修正: Role判定を安全にする（小文字化して比較） ▼▼▼
+    const currentRole = currentUser.role?.toLowerCase();
+    if (currentRole !== "store") return;
 
     const { data, error } = await supabase
       .from("profiles")
       .select("*")
       .eq("store_id", currentUser.id)
-      .eq("role", UserRole.CAST);
+      .eq("role", "cast"); // DBの値に合わせて小文字で検索
 
     if (error) {
       console.error("Error fetching casts:", error);
@@ -59,7 +71,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
     }
 
     if (data) setMyCasts(data as Profile[]);
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
     fetchCasts();
@@ -69,20 +81,18 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   // 2. キャストの関連ユーザー（友達/ブロック）を取得
   // -----------------------------
   const toggleExpand = async (castId: string) => {
-    // 既に開いているものを閉じるとき
     if (expandedCastId === castId) {
       setExpandedCastId(null);
       setCastRelations(null);
       return;
     }
 
-    // 新しく開くとき
     setExpandedCastId(castId);
     setLoadingRelations(true);
     setCastRelations(null);
 
     try {
-      // A. 友達リストを取得 (friendships)
+      // A. 友達リストを取得
       const { data: friendsData, error: friendsError } = await supabase
         .from("friendships")
         .select("requester_id, addressee_id")
@@ -91,7 +101,6 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
 
       if (friendsError) throw friendsError;
 
-      // 相手のIDを抽出
       const friendIds = (friendsData || []).map((f) =>
         f.requester_id === castId ? f.addressee_id : f.requester_id
       );
@@ -102,7 +111,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
         return;
       }
 
-      // B. キャストがブロックしているリストを取得 (connections)
+      // B. ブロックリストを取得
       const { data: blockData, error: blockError } = await supabase
         .from("connections")
         .select("target_id")
@@ -121,7 +130,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
 
       if (profilesError) throw profilesError;
 
-      // D. 「友達」と「ブロック中の友達」に振り分け
+      // D. 振り分け
       const friends: Profile[] = [];
       const blockedFriends: Profile[] = [];
 
@@ -143,92 +152,108 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
   };
 
   // -----------------------------
-  // 3. キャスト作成
+  // 3. キャスト作成 (修正版: 安全なエラーハンドリング)
   // -----------------------------
   const handleCreate = async () => {
+    // 1. バリデーション
     if (!newName || !newEmail || !newPass) {
       alert("すべての項目を入力してください");
       return;
     }
-    if (!currentUser) return;
 
     setIsProcessing(true);
 
     try {
-      const tempSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        {
-          auth: {
-            persistSession: false,
-            autoRefreshToken: false,
-            detectSessionInUrl: false,
-          },
-        }
-      );
-
-      const { data: authData, error: authError } =
-        await tempSupabase.auth.signUp({
+      // 2. API呼び出し
+      const response = await fetch("/api/create-cast", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: newName,
           email: newEmail,
           password: newPass,
-          options: {
-            data: {
-              name: newName,
-              role: UserRole.CAST,
-            },
-          },
-        });
+        }),
+      });
 
-      if (authError) throw authError;
-      const newUser = authData.user;
-      if (!newUser) throw new Error("ユーザー作成に失敗しました");
+      // 3. レスポンスの解析 (JSON以外が返ってくるケースを考慮)
+      let result;
+      const contentType = response.headers.get("content-type");
 
-      const displayId = newUser.id.slice(0, 8);
+      if (contentType && contentType.includes("application/json")) {
+        result = await response.json();
+      } else {
+        // JSONじゃない場合（サーバークラッシュ時のHTMLなど）はテキストとして読み取る
+        const text = await response.text();
+        console.error("Non-JSON Response:", text);
+        throw new Error(`サーバーエラーが発生しました (${response.status})`);
+      }
 
-      const { error: profileError } = await tempSupabase
-        .from("profiles")
-        .insert([
-          {
-            id: newUser.id,
-            email: newEmail,
-            role: UserRole.CAST,
-            name: newName,
-            display_id: displayId,
-            store_id: currentUser.id,
-            avatar_url: "",
-            bio: "",
-          },
-        ]);
+      // 4. API側でエラー判定された場合
+      if (!response.ok) {
+        const message = result.details
+          ? `${result.error}\n詳細: ${result.details}`
+          : result.error || "作成に失敗しました";
+        throw new Error(message);
+      }
 
-      if (profileError) throw profileError;
+      // 5. 成功時の処理
+      // fetchCastsが万が一コケても、後続の処理（モーダル閉じなど）は実行させる
+      try {
+        await fetchCasts();
+      } catch (fetchError) {
+        console.error(
+          "リスト更新に失敗しましたが、作成は完了しています",
+          fetchError
+        );
+      }
 
-      await fetchCasts();
       closeModal();
-      alert(`キャスト「${newName}」を作成しました！`);
+
+      alert(
+        `キャスト「${newName}」のアカウントを作成しました！\n\n設定したメールアドレスとパスワードですぐにログイン可能です。`
+      );
     } catch (e: any) {
-      console.error(e);
-      alert(e.message || "作成に失敗しました");
+      console.error("Create Error:", e);
+      // ここで必ずエラー理由を表示
+      alert(e.message || "予期せぬエラーで作成に失敗しました");
     } finally {
+      // 6. 確実に処理中フラグを下ろす
       setIsProcessing(false);
     }
   };
 
   // -----------------------------
-  // 4. キャスト削除
+  // 4. キャスト削除 (APIルート使用版)
   // -----------------------------
   const handleDelete = async (castId: string) => {
-    if (!window.confirm("このキャストを削除してもよいですか？")) return;
+    if (
+      !window.confirm(
+        "このキャストを完全に削除してもよいですか？\n（ログインもできなくなります）"
+      )
+    )
+      return;
 
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .delete()
-        .eq("id", castId);
+      const response = await fetch("/api/delete-account", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ target_id: castId }),
+      });
 
-      if (error) throw error;
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "削除に失敗しました");
+      }
 
       setMyCasts((prev) => prev.filter((c) => c.id !== castId));
+      alert("キャストアカウントを削除しました");
     } catch (e: any) {
+      console.error(e);
       alert("削除に失敗しました: " + e.message);
     }
   };
@@ -240,8 +265,16 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
     setNewPass("");
   };
 
+  // ▼▼▼ 読み込み中の表示 ▼▼▼
   if (!currentUser) {
-    return <div className="loading">読み込み中...</div>;
+    return (
+      <div
+        className="loading"
+        style={{ padding: "40px", textAlign: "center", color: "#666" }}
+      >
+        読み込み中...
+      </div>
+    );
   }
 
   return (
@@ -303,11 +336,11 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                 <div className="cast-mgmt-card-right">
                   <div className="cast-mgmt-status-label">有効</div>
 
-                  {/* ▼ 追加: 展開ボタン */}
+                  {/* 展開ボタン */}
                   <button
                     type="button"
                     onClick={(e) => {
-                      e.stopPropagation(); // 親の遷移イベントを止める
+                      e.stopPropagation();
                       toggleExpand(c.id);
                     }}
                     style={{
@@ -336,7 +369,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                 </div>
               </div>
 
-              {/* ▼ 展開エリア（友達リスト & ブロックリスト） */}
+              {/* 展開エリア */}
               {isExpanded && (
                 <div
                   className="cast-relations-area"
@@ -356,7 +389,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                         gap: "15px",
                       }}
                     >
-                      {/* 1. 友達リスト */}
+                      {/* 友達リスト */}
                       <div>
                         <h4
                           style={{
@@ -412,7 +445,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                         )}
                       </div>
 
-                      {/* 2. ブロック中の友達 */}
+                      {/* ブロック中の友達 */}
                       <div>
                         <h4
                           style={{
@@ -442,7 +475,7 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
                                   padding: "4px 0",
                                   borderBottom: "1px dashed #eee",
                                   cursor: "pointer",
-                                  opacity: 0.6, // ブロック中は少し薄く表示
+                                  opacity: 0.6,
                                 }}
                                 onClick={() =>
                                   safeNavigate(`/users/${blocked.id}`)
@@ -519,8 +552,12 @@ export const StoreCastManagementScreen: React.FC<ScreenProps> = ({
               <button onClick={closeModal} className="btn-secondary">
                 キャンセル
               </button>
-              <button onClick={handleCreate} className="btn-primary">
-                作成
+              <button
+                onClick={handleCreate}
+                className="btn-primary"
+                disabled={isProcessing}
+              >
+                {isProcessing ? "処理中..." : "作成"}
               </button>
             </div>
           </div>

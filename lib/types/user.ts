@@ -33,4 +33,7 @@ export interface Profile {
 
   // Supabase の timestamp
   created_at?: string;
+
+  agreed_to_terms_at?: string | null;
+  agreed_to_external_transmission_at?: string | null;
 }
