@@ -38,15 +38,21 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
     if (!user) return;
 
     try {
-      // ---------------------------------------------------------
-      // 1. ブロックリスト（除外用）を先に取得
-      // ---------------------------------------------------------
-      // 自分がブロックしている相手のIDリストを取得しておく
-      const { data: blockedData } = await supabase
+      console.log(
+        `[DEBUG-FETCH] FriendTabs.loadList(${type}) - Starting blocked list fetch`
+      );
+      const { data: blockedData, error: blockedError } = await supabase
         .from("connections")
         .select("target_id")
         .eq("user_id", user.id)
         .eq("status", "blocked");
+
+      console.log(
+        `[DEBUG-FETCH] FriendTabs.loadList(${type}) - Blocked list fetch finished`,
+        { count: blockedData?.length, error: blockedError }
+      );
+
+      if (blockedError) throw blockedError;
 
       const blockedUserIds = new Set(
         blockedData?.map((b) => b.target_id) || []
@@ -56,6 +62,9 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
       // 2. ブロックタブの場合の処理
       // ---------------------------------------------------------
       if (type === "blocked") {
+        console.log(
+          `[DEBUG-FETCH] FriendTabs.loadList(${type}) - Fetching blocked connections detailed`
+        );
         const { data, error } = await supabase
           .from("connections")
           .select(
@@ -68,6 +77,10 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
           .eq("user_id", user.id)
           .eq("status", "blocked");
 
+        console.log(
+          `[DEBUG-FETCH] FriendTabs.loadList(${type}) - Blocked connections finished`,
+          { count: data?.length, error }
+        );
         if (error) throw error;
 
         const formatted = (data || [])
@@ -86,6 +99,9 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
       // ---------------------------------------------------------
       // 3. その他のタブ (friendships) の処理
       // ---------------------------------------------------------
+      console.log(
+        `[DEBUG-FETCH] FriendTabs.loadList(${type}) - Starting main query`
+      );
       let query;
 
       /** 友だち（accepted） */
@@ -135,6 +151,10 @@ export const FriendTabs: React.FC<Props> = ({ currentUser }) => {
       }
 
       const { data, error } = await query!;
+      console.log(
+        `[DEBUG-FETCH] FriendTabs.loadList(${type}) - Main query finished`,
+        { count: data?.length, error }
+      );
       if (error) throw error;
 
       // データ整形 & ブロック済みユーザーの除外

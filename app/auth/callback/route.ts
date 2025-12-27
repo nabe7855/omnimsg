@@ -29,14 +29,21 @@ export async function GET(request: Request) {
     );
 
     // コードをセッションに交換
+    console.log("[DEBUG-AUTH] Exchanging code for session...");
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    
+
     if (!error) {
       // 成功したらログイン済みとしてホームへ
+      console.log(`[DEBUG-AUTH] Exchange success, redirecting to ${next}`);
       return NextResponse.redirect(`${origin}${next}`);
+    } else {
+      console.error("[DEBUG-AUTH] Exchange error:", error.message);
     }
   }
 
   // エラー等の場合はログイン画面に戻す
+  console.log(
+    "[DEBUG-AUTH] Code exchange failed or no code, redirecting to login"
+  );
   return NextResponse.redirect(`${origin}/login?error=verification_failed`);
 }

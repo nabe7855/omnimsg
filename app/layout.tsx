@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import "@/styles/layout.css";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import "./globals.css";
 
 // 歯車アイコン
@@ -40,10 +40,26 @@ export default function RootLayout({
   const pathname = usePathname();
   const { currentUser, loaded } = useAuth();
 
+  // レンダリングカウンター（useAuthの再マウント検知用）
+  const renderCountRef = React.useRef(0);
+  renderCountRef.current++;
+
+  console.log(
+    `[DEBUG-AUTH] RootLayout render #${
+      renderCountRef.current
+    }: loaded=${loaded}, currentUser=${currentUser?.id?.slice(
+      0,
+      5
+    )}, pathname=${pathname}`
+  );
+
   usePushSubscription(currentUser?.id);
 
   // ▼ 強制リダイレクト処理（修正版）
   useEffect(() => {
+    console.log(
+      `[DEBUG-AUTH] RootLayout useEffect (redirect logic): loaded=${loaded}, currentUser=${!!currentUser}, pathname=${pathname}`
+    );
     // まだ認証情報がロードされていない、あるいはログアウト状態なら何もしない
     if (!loaded || !currentUser) return;
 
@@ -53,10 +69,15 @@ export default function RootLayout({
         !!currentUser.agreed_to_terms_at &&
         !!currentUser.agreed_to_external_transmission_at;
 
+      console.log(
+        `[DEBUG-AUTH] Cast user detected: hasAgreed=${hasAgreed}, pathname=${pathname}`
+      );
+
       // 未同意の場合
       if (!hasAgreed) {
         // 現在地が「同意画面」でなければ飛ばす
         if (pathname !== "/cast/agreements") {
+          console.log("[DEBUG-AUTH] Redirecting to /cast/agreements");
           router.replace("/cast/agreements");
         }
       }
@@ -64,6 +85,9 @@ export default function RootLayout({
       else {
         // もし同意画面にアクセスしてしまったらホームへ戻す（逆方向のガード）
         if (pathname === "/cast/agreements") {
+          console.log(
+            "[DEBUG-AUTH] Agreed user on agreement page, redirecting to /home"
+          );
           router.replace("/home");
         }
       }

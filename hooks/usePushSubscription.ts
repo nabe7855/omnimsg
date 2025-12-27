@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabaseClient";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
-// VAPIDキー (環境変数から読み込むのがベストですが、現状のコードに合わせています)
+// VAPIDキー
 const VAPID_PUBLIC_KEY =
   "BHkhTie--LUg94VLJH_PFnbPQ-ate0KmThPOPfDhjz1Sdies6r_4WqQ1SaU5P6S0jqT72cqxdc7_MiiSu5RYnko";
 
@@ -14,25 +14,34 @@ function urlBase64ToUint8Array(base64String: string) {
 
 export const usePushSubscription = (userId: string | undefined) => {
   const [isSubscribed, setIsSubscribed] = useState(false);
+  
+  // ★追加：最後に処理したユーザーIDを記憶しておくRef
+  const processedUserIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    // ユーザーIDがない場合は処理しない
+    // ユーザーIDがない、または「既にこのユーザーIDで処理済み」なら何もしないで終了
     if (!userId) return;
+    if (processedUserIdRef.current === userId) return;
 
     const registerAndSubscribe = async () => {
+      // 処理開始前に「処理済み」としてマーク（二重実行防止）
+      processedUserIdRef.current = userId;
+
       if (!("serviceWorker" in navigator)) return;
 
       try {
+        console.log("🔔 Push通知設定を開始します..."); // デバッグ用ログ
+
         // 1. Service Workerの登録
-        await navigator.serviceWorker.register("/sw.js");
+        // 毎回 register を呼ぶのはコストが高いので、登録済みかチェックするロジックを入れるのも手ですが
+        // ブラウザ側で制御されるのでここは一旦このままで、useEffectの回数を減らすことで対策します。
+        const registration = await navigator.serviceWorker.register("/sw.js");
+        await navigator.serviceWorker.ready;
 
-        // 2. 準備完了を待つ
-        const registration = await navigator.serviceWorker.ready;
-
-        // 3. 既存のサブスクリプションを取得 (ここで変数 sub を定義)
+        // 2. 既存のサブスクリプションを取得
         let sub = await registration.pushManager.getSubscription();
 
-        // 購読がない場合は新規登録
+        // 3. 新規登録
         if (!sub) {
           sub = await registration.pushManager.subscribe({
             userVisibleOnly: true,
@@ -51,24 +60,26 @@ export const usePushSubscription = (userId: string | undefined) => {
           );
 
           if (error) {
-            // アカウント削除直後などで発生する外部キー制約エラー(23503)や重複エラー(409)は無視する
             if (error.code === "409" || error.code === "23503") {
-              console.warn(
-                "Push subscription DB update skipped (User might be deleted)."
-              );
+              // 無視してOKなエラー
             } else {
               console.error("DB upsert error:", error);
             }
           } else {
             setIsSubscribed(true);
+            console.log("✅ Push通知設定完了");
           }
         }
       } catch (error) {
         console.error("Push subscription failed:", error);
+        // エラーが出た場合、次回リトライできるようにフラグをリセットしてもいいが
+        // 無限ループ防止のためあえてリセットしない
       }
     };
 
     registerAndSubscribe();
+    
+    // 依存配列は userId だけにする
   }, [userId]);
 
   return isSubscribed;
