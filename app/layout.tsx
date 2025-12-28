@@ -1,14 +1,14 @@
-// src/app/layout.tsx
 "use client";
 
+import { Header } from "@/components/Header";
 import { useAuth } from "@/hooks/useAuth";
 import { usePushSubscription } from "@/hooks/usePushSubscription";
 import "@/styles/layout.css";
 import { usePathname, useRouter } from "next/navigation";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./globals.css";
 
-// 歯車アイコン
+// 歯車アイコン（プロフィール設定用）
 const SettingsIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -16,7 +16,7 @@ const SettingsIcon = () => (
     viewBox="0 0 24 24"
     strokeWidth={1.5}
     stroke="currentColor"
-    style={{ width: "24px", height: "24px", color: "#333" }}
+    className="w-6 h-6"
   >
     <path
       strokeLinecap="round"
@@ -38,63 +38,50 @@ export default function RootLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { currentUser, loaded } = useAuth();
+  const { currentUser, loaded, logout } = useAuth();
+  const [userType, setUserType] = useState<"creator" | "user">("user");
 
-  // レンダリングカウンター（useAuthの再マウント検知用）
-  const renderCountRef = React.useRef(0);
+  // --- 1. デバッグ・プッシュ通知 ---
+  const renderCountRef = useRef(0);
   renderCountRef.current++;
-
-  console.log(
-    `[DEBUG-AUTH] RootLayout render #${
-      renderCountRef.current
-    }: loaded=${loaded}, currentUser=${currentUser?.id?.slice(
-      0,
-      5
-    )}, pathname=${pathname}`
-  );
 
   usePushSubscription(currentUser?.id);
 
-  // ▼ 強制リダイレクト処理（修正版）
+  // --- 2. URLハッシュによる表示モード同期 ---
   useEffect(() => {
-    console.log(
-      `[DEBUG-AUTH] RootLayout useEffect (redirect logic): loaded=${loaded}, currentUser=${!!currentUser}, pathname=${pathname}`
-    );
-    // まだ認証情報がロードされていない、あるいはログアウト状態なら何もしない
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash.includes("creator")) setUserType("creator");
+      if (hash.includes("user")) setUserType("user");
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    handleHashChange();
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
+
+  const updateType = (type: "creator" | "user") => {
+    setUserType(type);
+    window.location.hash = `#/${type}`;
+  };
+
+  // --- 3. 強制リダイレクト処理 (キャストの同意ガード) ---
+  useEffect(() => {
     if (!loaded || !currentUser) return;
 
-    // キャストの場合のみチェック
     if (currentUser.role?.toLowerCase() === "cast") {
       const hasAgreed =
         !!currentUser.agreed_to_terms_at &&
         !!currentUser.agreed_to_external_transmission_at;
-
-      console.log(
-        `[DEBUG-AUTH] Cast user detected: hasAgreed=${hasAgreed}, pathname=${pathname}`
-      );
-
-      // 未同意の場合
       if (!hasAgreed) {
-        // 現在地が「同意画面」でなければ飛ばす
-        if (pathname !== "/cast/agreements") {
-          console.log("[DEBUG-AUTH] Redirecting to /cast/agreements");
-          router.replace("/cast/agreements");
-        }
-      }
-      // ★追加: 同意済みの場合
-      else {
-        // もし同意画面にアクセスしてしまったらホームへ戻す（逆方向のガード）
-        if (pathname === "/cast/agreements") {
-          console.log(
-            "[DEBUG-AUTH] Agreed user on agreement page, redirecting to /home"
-          );
-          router.replace("/home");
-        }
+        if (pathname !== "/cast/agreements") router.replace("/cast/agreements");
+      } else {
+        if (pathname === "/cast/agreements") router.replace("/home");
       }
     }
   }, [currentUser, loaded, pathname, router]);
 
-  if (pathname?.startsWith("/admin")) {
+  // --- 4. 特殊なパスの処理 (管理画面/同意画面) ---
+  if (pathname?.startsWith("/admin") || pathname === "/cast/agreements") {
     return (
       <html lang="ja">
         <body>{children}</body>
@@ -102,38 +89,21 @@ export default function RootLayout({
     );
   }
 
-  // 同意画面専用レイアウト
-  if (pathname === "/cast/agreements") {
-    return (
-      <html lang="ja">
-        <body>{children}</body>
-      </html>
-    );
-  }
-
-  // ローディング画面
+  // --- 5. ローディング表示 ---
   if (!loaded) {
     return (
       <html lang="ja">
-        <body>
-          <div
-            className="app-container"
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              height: "100vh",
-            }}
-          >
-            <p>読み込み中...</p>
-          </div>
+        <body className="flex items-center justify-center h-screen bg-white">
+          <p className="animate-pulse text-gray-400 font-medium">
+            読み込み中...
+          </p>
         </body>
       </html>
     );
   }
 
+  // --- 6. UI制御データ生成 ---
   const getPageTitle = () => {
-    if (pathname === "/login") return "店舗 ログイン";
     if (pathname === "/home") return "ホーム";
     if (pathname === "/talks") return "トーク一覧";
     if (pathname.startsWith("/talk/")) return "チャット";
@@ -141,17 +111,13 @@ export default function RootLayout({
     if (pathname === "/store/casts") return "キャスト管理";
     if (pathname === "/store/menu") return "メニュー設定";
     if (pathname === "/broadcast") return "一斉送信";
-    if (pathname === "/group/create") return "グループ作成";
-    if (pathname.startsWith("/group/edit/")) return "グループ編集";
     return "";
   };
 
   const getFooterItems = () => {
     if (!currentUser) return [];
-
     const role = currentUser.role?.toLowerCase();
 
-    // キャストかつ未同意の場合はフッターを出さない
     if (role === "cast") {
       const hasAgreed =
         !!currentUser.agreed_to_terms_at &&
@@ -159,106 +125,101 @@ export default function RootLayout({
       if (!hasAgreed) return [];
     }
 
-    if (role === "user") {
-      return [
-        { id: "/home", label: "ホーム", icon: "🏠" },
-        { id: "/talks", label: "トーク", icon: "💬" },
-        { id: "/profile", label: "マイページ", icon: "👤" },
-      ];
-    }
-
-    if (role === "cast") {
-      return [
-        { id: "/home", label: "ホーム", icon: "🏠" },
-        { id: "/talks", label: "トーク", icon: "💬" },
-        { id: "/profile", label: "マイページ", icon: "👤" },
-      ];
-    }
+    const baseItems = [
+      { id: "/home", label: "ホーム", icon: "🏠" },
+      { id: "/talks", label: "トーク", icon: "💬" },
+    ];
 
     if (role === "store") {
       return [
-        { id: "/home", label: "ホーム", icon: "🏠" },
+        ...baseItems,
         { id: "/store/casts", label: "キャスト", icon: "👥" },
-        { id: "/talks", label: "トーク", icon: "💬" },
         { id: "/store/menu", label: "メニュー", icon: "📋" },
         { id: "/profile", label: "マイページ", icon: "👤" },
       ];
     }
 
-    return [];
+    return [...baseItems, { id: "/profile", label: "マイページ", icon: "👤" }];
   };
 
+  const isCreator = userType === "creator";
   const footerItems = getFooterItems();
-  // ログイン画面以外かつフッター項目がある場合に表示
   const shouldShowFooter =
     currentUser && footerItems.length > 0 && pathname !== "/login";
 
-  const handleSettingsClick = () => {
-    const settingSection = document.getElementById("profile-settings");
-    if (settingSection) {
-      settingSection.scrollIntoView({ behavior: "smooth" });
-    }
-  };
-
   return (
     <html lang="ja">
-      <body>
-        <div className="app-container">
-          <header className="app-header">
-            {pathname !== "/login" && (
-              <button className="back-btn" onClick={() => router.back()}>
+      <body
+        className={`min-h-screen transition-colors duration-700 ${
+          isCreator
+            ? "gradient-creator text-white"
+            : "gradient-user text-gray-900"
+        }`}
+      >
+        <div className="app-container flex flex-col min-h-screen">
+          {/* --- 統合ヘッダー --- */}
+          <Header
+            userType={userType}
+            setUserType={updateType}
+            isLoggedIn={!!currentUser}
+            onLogout={logout}
+          />
+
+          {/* アプリケーション固有のサブヘッダー (戻るボタン/タイトル) ※必要に応じて */}
+          {currentUser && pathname !== "/" && pathname !== "/home" && (
+            <div className="flex items-center px-4 py-2 border-b border-current opacity-20">
+              <button
+                onClick={() => router.back()}
+                className="text-sm font-bold mr-4"
+              >
                 ← 戻る
               </button>
-            )}
+              <h1 className="text-sm font-black uppercase tracking-widest">
+                {getPageTitle()}
+              </h1>
 
-            <h1 className="page-title">{getPageTitle()}</h1>
-
-            <div className="header-right">
-              {currentUser && (
-                <>
-                  {pathname === "/profile" ? (
-                    <button
-                      onClick={handleSettingsClick}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <SettingsIcon />
-                    </button>
-                  ) : (
-                    <button
-                      className="logout-btn"
-                      onClick={() => router.push("/profile")}
-                    >
-                      {currentUser.name}
-                    </button>
-                  )}
-                </>
-              )}
+              <div className="ml-auto">
+                {pathname === "/profile" && (
+                  <button
+                    onClick={() =>
+                      document
+                        .getElementById("profile-settings")
+                        ?.scrollIntoView({ behavior: "smooth" })
+                    }
+                  >
+                    <SettingsIcon />
+                  </button>
+                )}
+              </div>
             </div>
-          </header>
+          )}
 
-          <main className="app-main content-area">{children}</main>
+          {/* --- メインコンテンツ --- */}
+          <main className="flex-1 app-main content-area">{children}</main>
 
+          {/* --- 統合ボトムナビゲーション --- */}
           {shouldShowFooter && (
-            <nav className="bottom-nav">
+            <nav
+              className={`bottom-nav sticky bottom-0 flex justify-around items-center h-16 border-t backdrop-blur-md transition-all ${
+                isCreator
+                  ? "bg-violet-950/80 border-white/10"
+                  : "bg-white/80 border-gray-100"
+              }`}
+            >
               {footerItems.map((item) => (
                 <button
                   key={item.id}
-                  className={`nav-item ${
+                  className={`flex flex-col items-center gap-1 transition-all ${
                     pathname === item.id || pathname.startsWith(item.id + "/")
-                      ? "active"
-                      : ""
+                      ? isCreator
+                        ? "text-amber-500 scale-110"
+                        : "text-pink-500 scale-110"
+                      : "opacity-40"
                   }`}
                   onClick={() => router.push(item.id)}
                 >
-                  <span className="nav-icon">{item.icon}</span>
-                  <span className="nav-label">{item.label}</span>
+                  <span className="text-xl">{item.icon}</span>
+                  <span className="text-[10px] font-bold">{item.label}</span>
                 </button>
               ))}
             </nav>
