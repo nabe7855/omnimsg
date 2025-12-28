@@ -1,4 +1,4 @@
-import { Profile, UserRole } from '../types';
+import { Profile, UserRole } from "../types";
 
 export interface ScreenProps {
   currentUser?: Profile | null;
@@ -6,7 +6,13 @@ export interface ScreenProps {
 }
 
 export interface LoginProps {
-  onLogin: (role: UserRole, mode: 'login' | 'register', email: string, password: string, name?: string) => void;
+  onLogin: (
+    role: UserRole,
+    mode: "login" | "register",
+    email: string,
+    password: string,
+    name?: string
+  ) => Promise<void>;
 }
 
 export interface ChatDetailProps extends ScreenProps {
@@ -20,10 +26,10 @@ export interface ProfileProps extends ScreenProps {
 }
 
 export interface PublicProfileProps extends ScreenProps {
-    currentUser: Profile | null;
-    targetUserId: string;
+  currentUser: Profile | null;
+  targetUserId: string;
 }
 
 export interface GroupManageProps extends ScreenProps {
-    roomId?: string;
+  roomId?: string;
 }
