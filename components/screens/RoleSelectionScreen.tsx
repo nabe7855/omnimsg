@@ -46,7 +46,7 @@ export const RoleSelectionScreen: React.FC<RoleSelectionScreenProps> = ({
 
           <div className="landing-cta-group">
             <button
-              onClick={() => onRoleSelect(UserRole.CAST)}
+              onClick={() => onRoleSelect(UserRole.STORE)}
               className="landing-btn landing-btn-primary"
             >
               <span className="landing-btn-text">クリエイターログイン</span>
@@ -54,7 +54,7 @@ export const RoleSelectionScreen: React.FC<RoleSelectionScreenProps> = ({
             </button>
 
             <button
-              onClick={() => onRoleSelect(UserRole.STORE)}
+              onClick={() => onRoleSelect(UserRole.CAST)}
               className="landing-btn landing-btn-secondary"
             >
               <span className="landing-btn-text">スタッフログイン</span>
@@ -153,37 +153,63 @@ export const RoleSelectionScreen: React.FC<RoleSelectionScreenProps> = ({
     <main
       className={`landing-main ${isCreator ? "creator-mode" : "user-mode"}`}
     >
-      {/* Mode Toggle Button */}
-      <button
-        onClick={() => setViewMode(isCreator ? "user" : "creator")}
+      {/* Mode Toggle - Segmented Control */}
+      <div
         style={{
           position: "fixed",
           top: "20px",
           right: "20px",
           zIndex: 1000,
-          padding: "12px 24px",
+          display: "flex",
+          gap: "0",
+          background: "white",
           borderRadius: "999px",
-          border: "2px solid",
-          borderColor: isCreator ? "#f59e0b" : "#f472b6",
-          background: isCreator
-            ? "rgba(76, 29, 149, 0.9)"
-            : "rgba(255, 255, 255, 0.9)",
-          color: isCreator ? "white" : "#111827",
-          fontWeight: "bold",
-          cursor: "pointer",
-          backdropFilter: "blur(8px)",
+          padding: "4px",
           boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
-          transition: "all 0.3s ease",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = "scale(1.05)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = "scale(1)";
+          border: "2px solid #e5e7eb",
         }}
       >
-        {isCreator ? "👤 一般ユーザー向け" : "🎨 クリエイター向け"}
-      </button>
+        <button
+          onClick={() => setViewMode("user")}
+          style={{
+            padding: "10px 20px",
+            borderRadius: "999px",
+            border: "none",
+            background: !isCreator ? "#f472b6" : "transparent",
+            color: !isCreator ? "white" : "#6b7280",
+            fontWeight: "bold",
+            cursor: "pointer",
+            transition: "all 0.3s ease",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "14px",
+          }}
+        >
+          <span>👤</span>
+          <span>一般ユーザー</span>
+        </button>
+        <button
+          onClick={() => setViewMode("creator")}
+          style={{
+            padding: "10px 20px",
+            borderRadius: "999px",
+            border: "none",
+            background: isCreator ? "#f59e0b" : "transparent",
+            color: isCreator ? "#4c1d95" : "#6b7280",
+            fontWeight: "bold",
+            cursor: "pointer",
+            transition: "all 0.3s ease",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            fontSize: "14px",
+          }}
+        >
+          <span>🎨</span>
+          <span>クリエイター</span>
+        </button>
+      </div>
 
       {isCreator ? <CreatorSection /> : <UserSection />}
 
