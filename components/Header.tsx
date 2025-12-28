@@ -25,17 +25,11 @@ export const Header: React.FC<HeaderProps> = ({
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div
-            className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xl ${
-              isCreator
-                ? "bg-amber-500 text-violet-950 shadow-[0_0_15px_rgba(245,158,11,0.5)]"
-                : "bg-pink-400 text-white"
-            }`}
-          >
-            c
-          </div>
-          <span className="text-xl font-black tracking-tighter">cococha</span>
+        <div
+          className={`header-logo ${isCreator ? "header-mode-creator" : ""}`}
+        >
+          <div className="header-logo-icon">c</div>
+          <span className="header-logo-text">cococha</span>
         </div>
 
         {isLoggedIn && (

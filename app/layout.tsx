@@ -174,9 +174,6 @@ export default function RootLayout({
               >
                 ← 戻る
               </button>
-              <h1 className="text-sm font-black uppercase tracking-widest">
-                {getPageTitle()}
-              </h1>
 
               <div className="ml-auto">
                 {pathname === "/profile" && (
